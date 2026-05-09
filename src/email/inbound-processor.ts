@@ -88,24 +88,21 @@ async function fetchAttachments(
         console.warn(`[email/inbound] Could not fetch attachment ${att.filename}: HTTP ${res.status}`);
         continue;
       }
-      // Resend may return raw binary OR a JSON envelope with base64 content.
-      // Check the response Content-Type to avoid double-encoding.
-      const ct = res.headers.get("content-type") ?? "";
-      let data: string;
-      if (ct.includes("application/json")) {
-        const json = await res.json() as Record<string, unknown>;
-        console.log(`[email/inbound] Attachment JSON keys for ${att.filename}:`, Object.keys(json));
-        const raw = (json.content ?? json.data ?? json.base64 ?? json.body ?? "") as string;
-        data = raw.replace(/\s/g, "");
-      } else {
-        const buf = await res.arrayBuffer();
-        data = Buffer.from(buf).toString("base64");
-      }
-
-      if (!data) {
-        console.warn(`[email/inbound] Empty data for attachment ${att.filename} — skipping`);
+      // The metadata endpoint returns JSON with a download_url — fetch that for actual bytes.
+      const meta = await res.json() as Record<string, unknown>;
+      const downloadUrl = meta.download_url as string | undefined;
+      if (!downloadUrl) {
+        console.warn(`[email/inbound] No download_url for attachment ${att.filename} — skipping`);
         continue;
       }
+
+      const dlRes = await fetch(downloadUrl);
+      if (!dlRes.ok) {
+        console.warn(`[email/inbound] Could not download attachment ${att.filename}: HTTP ${dlRes.status}`);
+        continue;
+      }
+      const buf = await dlRes.arrayBuffer();
+      const data = Buffer.from(buf).toString("base64");
 
       if (isImage) {
         images.push({ type: "image", mediaType: att.content_type as ImageContentBlock["mediaType"], data });
