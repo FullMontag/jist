@@ -49,6 +49,22 @@ const SUPPORTED_IMAGE_TYPES = new Set([
   "image/jpeg", "image/png", "image/gif", "image/webp",
 ]);
 
+// Extract inline base64 images from HTML — covers WhatsApp photos forwarded
+// via Gmail which arrive as data URIs rather than MIME attachments.
+function extractInlineImages(html: string): ImageContentBlock[] {
+  const images: ImageContentBlock[] = [];
+  const re = /src="data:(image\/(?:jpeg|png|gif|webp));base64,([A-Za-z0-9+/=]+)"/g;
+  let match: RegExpExecArray | null;
+  while ((match = re.exec(html)) !== null) {
+    images.push({
+      type: "image",
+      mediaType: match[1] as ImageContentBlock["mediaType"],
+      data: match[2]!,
+    });
+  }
+  return images;
+}
+
 async function fetchImageAttachments(
   emailId: string,
   attachments: ResendAttachmentMeta[],
@@ -183,6 +199,14 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
   }
 
   const emailContent = (await contentRes.json()) as ResendEmailContent;
+
+  // Extract inline images BEFORE stripping HTML — WhatsApp photos forwarded via
+  // Gmail arrive as data URIs embedded in the HTML body, not as MIME attachments.
+  const inlineImages = emailContent.html ? extractInlineImages(emailContent.html) : [];
+  if (inlineImages.length > 0) {
+    console.log(`[email/inbound] Found ${inlineImages.length} inline image(s) in HTML body`);
+  }
+
   const rawBody = emailContent.text
     ? emailContent.text
     : stripHtml(emailContent.html ?? "");
@@ -218,12 +242,15 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
 
   // 4. Fetch image attachments (WhatsApp photos, scanned receipts, etc.)
   const apiKey = process.env.RESEND_API_KEY!;
-  const images = emailContent.attachments?.length
+  const mimeImages = emailContent.attachments?.length
     ? await fetchImageAttachments(data.email_id, emailContent.attachments, apiKey)
     : [];
 
-  if (images.length > 0) {
-    console.log(`[email/inbound] ${images.length} image attachment(s) will be passed to LLM`);
+  // Merge MIME attachment images with inline base64 images extracted from HTML
+  const allImages = [...inlineImages, ...mimeImages];
+
+  if (allImages.length > 0) {
+    console.log(`[email/inbound] ${allImages.length} image(s) total (${inlineImages.length} inline, ${mimeImages.length} attachment) will be passed to LLM`);
   }
 
   // 5. Run subscriptions + renewals analyzers (not opportunities — that's inbox-only)
@@ -231,13 +258,13 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
   const allResults: AnalyzerResult[] = [];
   const allTransactions = [];
 
-  const subsResult = await runAnalyzerNoFilter(subscriptionsAnalyzer, [rawEmail], provider, images);
+  const subsResult = await runAnalyzerNoFilter(subscriptionsAnalyzer, [rawEmail], provider, allImages);
   if (subsResult) {
     allResults.push(subsResult as AnalyzerResult);
     allTransactions.push(...fromSubscriptions(subsResult.output as SubscriptionOutput));
   }
 
-  const renewalsResult = await runAnalyzerNoFilter(renewalsAnalyzer, [rawEmail], provider, images);
+  const renewalsResult = await runAnalyzerNoFilter(renewalsAnalyzer, [rawEmail], provider, allImages);
   if (renewalsResult) {
     allResults.push(renewalsResult as AnalyzerResult);
     allTransactions.push(...fromRenewals(renewalsResult.output as RenewalsOutput));
