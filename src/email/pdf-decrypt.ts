@@ -9,8 +9,26 @@
 
 import type * as PdfjsType from "pdfjs-dist";
 
+// pdfjs-dist tries to polyfill canvas APIs on load and throws if they're missing.
+// For text extraction we don't need actual rendering — stub the globals before importing.
+function stubDomGlobals() {
+  if (typeof globalThis.DOMMatrix === "undefined") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).DOMMatrix = class { constructor() { return {}; } };
+  }
+  if (typeof globalThis.ImageData === "undefined") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).ImageData = class { constructor() { return {}; } };
+  }
+  if (typeof globalThis.Path2D === "undefined") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    (globalThis as any).Path2D = class { constructor() { return {}; } };
+  }
+}
+
 // Dynamic import at call time — avoids bundler issues with the .mjs build
 async function getPdfjs(): Promise<typeof PdfjsType> {
+  stubDomGlobals();
   const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs" as string) as typeof PdfjsType;
   pdfjs.GlobalWorkerOptions.workerSrc = "";
   return pdfjs;

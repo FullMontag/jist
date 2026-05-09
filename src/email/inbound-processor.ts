@@ -202,6 +202,21 @@ export interface InboundEmailData {
   subject: string;
 }
 
+async function sendReply(
+  resend: Resend,
+  to: string,
+  subject: string,
+  text: string
+): Promise<void> {
+  const from = process.env.DIGEST_FROM_EMAIL ?? "onboarding@resend.dev";
+  const { error } = await resend.emails.send({ from, to, subject: `Re: ${subject}`, text });
+  if (error) {
+    console.error(`[email/inbound] Failed to send reply to ${to}:`, error.message);
+  } else {
+    console.log(`[email/inbound] Reply sent to ${to} ✓`);
+  }
+}
+
 export async function processInboundEmail(data: InboundEmailData): Promise<void> {
   const resend = new Resend(process.env.RESEND_API_KEY);
   const fromAddress = extractEmailAddress(data.from);
@@ -302,50 +317,47 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
   };
 
   // 6. Run subscriptions + renewals analyzers (not opportunities — that's inbox-only)
-  const provider = createProvider("anthropic");
-  const allResults: AnalyzerResult[] = [];
-  const allTransactions = [];
+  try {
+    const provider = createProvider("anthropic");
+    const allResults: AnalyzerResult[] = [];
+    const allTransactions = [];
 
-  const subsResult = await runAnalyzerNoFilter(subscriptionsAnalyzer, [rawEmail], provider, allImages);
-  if (subsResult) {
-    allResults.push(subsResult as AnalyzerResult);
-    allTransactions.push(...fromSubscriptions(subsResult.output as SubscriptionOutput));
-  }
+    const subsResult = await runAnalyzerNoFilter(subscriptionsAnalyzer, [rawEmail], provider, allImages);
+    if (subsResult) {
+      allResults.push(subsResult as AnalyzerResult);
+      allTransactions.push(...fromSubscriptions(subsResult.output as SubscriptionOutput));
+    }
 
-  const renewalsResult = await runAnalyzerNoFilter(renewalsAnalyzer, [rawEmail], provider, allImages);
-  if (renewalsResult) {
-    allResults.push(renewalsResult as AnalyzerResult);
-    allTransactions.push(...fromRenewals(renewalsResult.output as RenewalsOutput));
-  }
+    const renewalsResult = await runAnalyzerNoFilter(renewalsAnalyzer, [rawEmail], provider, allImages);
+    if (renewalsResult) {
+      allResults.push(renewalsResult as AnalyzerResult);
+      allTransactions.push(...fromRenewals(renewalsResult.output as RenewalsOutput));
+    }
 
-  // 7. Persist
-  if (allResults.length > 0) {
-    await saveAnalyzerResults(user.user_id, allResults);
-  }
+    // 7. Persist
+    if (allResults.length > 0) {
+      await saveAnalyzerResults(user.user_id, allResults);
+    }
 
-  const transactions = deduplicateTransactions(allTransactions);
-  if (transactions.length > 0) {
-    await saveTransactions(user.user_id, transactions);
-  }
+    const transactions = deduplicateTransactions(allTransactions);
+    if (transactions.length > 0) {
+      await saveTransactions(user.user_id, transactions);
+    }
 
-  console.log(
-    `[email/inbound] Saved ${allResults.length} results, ${transactions.length} transactions for ${user.email}`
-  );
+    console.log(
+      `[email/inbound] Saved ${allResults.length} results, ${transactions.length} transactions for ${user.email}`
+    );
 
-  // 8. Reply with a summary
-  const fromEmail = process.env.DIGEST_FROM_EMAIL ?? "onboarding@resend.dev";
-  const replySummary = buildReplySummary(allResults, data.subject);
-
-  const { error } = await resend.emails.send({
-    from: fromEmail,
-    to: fromAddress,
-    subject: `Re: ${data.subject}`,
-    text: replySummary,
-  });
-
-  if (error) {
-    console.error(`[email/inbound] Failed to send reply to ${fromAddress}:`, error.message);
-  } else {
-    console.log(`[email/inbound] Reply sent to ${fromAddress} ✓`);
+    // 8. Reply with a summary
+    await sendReply(resend, fromAddress, data.subject, buildReplySummary(allResults, data.subject));
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    console.error(`[email/inbound] Processing error:`, err);
+    await sendReply(
+      resend,
+      fromAddress,
+      data.subject,
+      `Something went wrong while processing your forwarded email.\n\nError: ${message}\n\n— Jist`
+    );
   }
 }
