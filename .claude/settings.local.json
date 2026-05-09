@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm install:*)",
+      "Bash(pnpm --version)",
+      "Bash(pnpm add:*)",
+      "Bash(node:*)",
+      "Bash(node -e \"console.log\\(require\\(''/mnt/c/Users/nirmo/Jist/node_modules/openai/package.json''\\).version\\)\")",
+      "Bash(node -e \"console.log\\(require\\(''/mnt/c/Users/nirmo/Jist/node_modules/next/package.json''\\).version\\)\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Read(//home/nirm/**)",
+      "Bash(npm --prefix ~/jist install)",
+      "Bash(npm run:*)",
+      "Bash(grep -v \"^$\")",
+      "Bash(npx tsc *)"
+    ]
+  }
+}

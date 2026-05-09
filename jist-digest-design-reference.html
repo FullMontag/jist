@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Jist Weekly Summary</title>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&family=Inter:wght@400;500&display=swap" rel="stylesheet"/>
+<style>
+*,*::before,*::after{box-sizing:border-box;margin:0;padding:0}
+:root{--teal:#0D9488;--black:#000000;--white:#ffffff;--surface:#FDFDFD;--surface-container:#F8FAFC;--outline:#E2E8F0;--on-surface:#0F172A;--on-surface-variant:#64748B;--red:#EF4444}
+body{font-family:'Inter',sans-serif;-webkit-font-smoothing:antialiased;background:#F1F5F9;padding:48px;color:var(--on-surface)}
+.brand-font,h1,h2,h3{font-family:'Space Grotesk',sans-serif}
+.mono{font-family:'Space Mono',monospace;letter-spacing:-0.05em}
+.email-wrapper{max-width:640px;margin:0 auto;background:var(--white);border:1px solid rgba(0,0,0,0.05);box-shadow:0 25px 50px -12px rgba(0,0,0,0.15);overflow:hidden}
+.header{background:var(--white);display:flex;justify-content:space-between;align-items:center;padding:32px 40px;border-bottom:1px solid var(--outline)}
+.logo{display:flex;align-items:center;gap:12px;font-family:'Space Grotesk',sans-serif;font-size:22px;font-weight:700;letter-spacing:-0.02em;text-decoration:none;color:var(--black)}
+.logo-icon{width:32px;height:32px;background:var(--teal);display:flex;align-items:center;justify-content:center;border-radius:4px}
+.logo-accent{color:var(--teal)}
+.header-meta{text-align:right}
+.edition-label{display:block;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;color:var(--teal);margin-bottom:2px}
+.edition-sub{display:block;font-size:10px;color:var(--on-surface-variant);font-weight:500}
+.hero{padding:64px 40px 48px}
+.hero h1{font-size:52px;font-weight:300;letter-spacing:-0.03em;color:var(--black);margin-bottom:20px;line-height:1.1}
+.hero p{color:var(--on-surface-variant);font-size:17px;line-height:1.7;max-width:420px;font-weight:400}
+.content{padding:0 40px 48px}
+.content>*+*{margin-top:24px}
+.stat-hero{background:var(--black);color:var(--white);padding:40px;position:relative;overflow:hidden}
+.stat-hero-label{display:flex;align-items:center;gap:10px;margin-bottom:40px}
+.stat-hero-label .icon{color:var(--teal);font-size:18px}
+.stat-hero-label .lbl{color:rgba(255,255,255,0.5);font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.2em}
+.stat-hero-body{display:flex;justify-content:space-between;align-items:flex-end}
+.stat-big{font-family:'Space Mono',monospace;font-size:80px;font-weight:400;line-height:1;font-style:italic;letter-spacing:-0.05em;color:var(--white)}
+.stat-big-sub{font-size:10px;text-transform:uppercase;letter-spacing:0.15em;color:rgba(255,255,255,0.3);margin-top:6px;font-weight:500}
+.stat-right{text-align:right}
+.stat-amount{font-family:'Space Mono',monospace;font-size:28px;font-weight:700;color:var(--teal);letter-spacing:-0.05em}
+.stat-amount-sub{font-size:10px;text-transform:uppercase;letter-spacing:0.15em;color:rgba(255,255,255,0.3);margin-top:4px}
+.grid-2{display:grid;grid-template-columns:1fr 1fr;gap:24px}
+.panel{background:var(--surface-container);border:1px solid rgba(226,232,240,0.5);padding:32px}
+.panel-header{display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--outline);padding-bottom:16px;margin-bottom:32px}
+.panel-title{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;color:var(--on-surface)}
+.alert-list{display:flex;flex-direction:column;gap:24px}
+.alert-row{display:flex;gap:16px}
+.alert-bar{width:3px;flex-shrink:0;min-height:44px}
+.alert-bar.red{background:var(--red)}.alert-bar.teal{background:var(--teal)}.alert-bar.black{background:var(--black)}
+.alert-name{font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;color:var(--on-surface);margin-bottom:4px}
+.alert-desc{font-size:12px;color:var(--on-surface-variant);line-height:1.5}
+.danger{color:var(--red);font-weight:600}
+.reads-list{display:flex;flex-direction:column;gap:20px}
+.read-row{display:flex;justify-content:space-between;align-items:flex-start;gap:16px}
+.read-title{font-family:'Space Grotesk',sans-serif;font-size:13px;font-weight:600;color:var(--on-surface);margin-bottom:3px}
+.read-by{font-size:11px;color:var(--on-surface-variant)}
+.read-tag{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;flex-shrink:0;margin-top:2px}
+.read-tag.teal{color:var(--teal)}.read-tag.black{color:var(--black)}
+.cta-section{padding:0 40px 64px}
+.cta-box{border:2px solid var(--black);padding:40px;text-align:center;background:var(--white)}
+.cta-label{font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:0.15em;color:var(--on-surface);margin-bottom:24px}
+.cta-btn{display:inline-flex;align-items:center;justify-content:center;gap:14px;background:var(--black);color:var(--white);padding:20px 40px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:0.15em;text-decoration:none}
+footer{padding:48px 40px;border-top:1px solid var(--outline);background:var(--white)}
+.footer-top{display:flex;justify-content:space-between;align-items:center;gap:24px;flex-wrap:wrap}
+.footer-brand{font-family:'Space Grotesk',sans-serif;font-size:18px;font-weight:700;color:var(--black);margin-bottom:4px}
+.footer-tagline{font-size:10px;text-transform:uppercase;letter-spacing:0.2em;color:var(--on-surface-variant);font-weight:500}
+.footer-upgrade{font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.25em;color:var(--white);background:var(--black);padding:16px 28px;text-decoration:none}
+.footer-bottom{margin-top:48px;padding-top:24px;border-top:1px solid var(--outline);display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:16px}
+.footer-links{display:flex;gap:28px}
+.footer-link{font-size:9px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;color:var(--on-surface-variant);text-decoration:none}
+.footer-copy{font-size:9px;letter-spacing:0.15em;color:rgba(100,116,139,0.5);font-weight:500}
+.transport-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:24px;margin-top:4px}
+.transport-num{font-family:'Space Mono',monospace;font-size:28px;font-weight:400;color:var(--black);letter-spacing:-0.05em}
+.transport-num.ok{color:var(--teal);font-size:18px;font-weight:700;font-family:'Space Grotesk',sans-serif}
+.transport-sub{font-size:10px;text-transform:uppercase;letter-spacing:0.12em;color:var(--on-surface-variant);margin-top:4px}
+</style>
+</head>
+<body>
+<div class="email-wrapper">
+  <header class="header">
+    <a class="logo" href="#">
+      <div class="logo-icon"><span style="color:white;font-weight:700">j</span></div>
+      j<span class="logo-accent">i</span>st
+    </a>
+    <div class="header-meta">
+      <span class="edition-label">Sunday Edition</span>
+      <span class="edition-sub">Apr 13, 2026 · weekly@jist.ai</span>
+    </div>
+  </header>
+
+  <div class="hero">
+    <h1>Hi Nir,</h1>
+    <p>Your Sunday morning financial briefing is ready. Here's what your inbox revealed this week.</p>
+  </div>
+
+  <div class="content">
+    <div class="stat-hero">
+      <div class="stat-hero-label">
+        <span class="icon">&#9632;</span>
+        <span class="lbl">Charges &amp; activity this period</span>
+      </div>
+      <div class="stat-hero-body">
+        <div>
+          <div class="stat-big">06</div>
+          <div class="stat-big-sub">Transactions tracked</div>
+        </div>
+        <div class="stat-right">
+          <div class="stat-amount">&#8362;625</div>
+          <div class="stat-amount-sub">Largest · Imagine Festival</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="grid-2">
+      <div class="panel">
+        <div class="panel-header">
+          <span style="font-size:14px">&#9888;</span>
+          <span class="panel-title">Alerts &amp; Renewals</span>
+        </div>
+        <div class="alert-list">
+          <div class="alert-row">
+            <div class="alert-bar red"></div>
+            <div>
+              <div class="alert-name">GoDaddy — TINYOPS.CO</div>
+              <div class="alert-desc">Domain <span class="danger">expired &amp; cancelled</span> — may still be in redemption. Log in immediately.</div>
+            </div>
+          </div>
+          <div class="alert-row">
+            <div class="alert-bar teal"></div>
+            <div>
+              <div class="alert-name">Google One 200GB</div>
+              <div class="alert-desc">Renews Apr 24 &middot; <span style="font-family:'Space Mono',monospace">&#8362;120</span> annual</div>
+            </div>
+          </div>
+          <div class="alert-row">
+            <div class="alert-bar black"></div>
+            <div>
+              <div class="alert-name">Apple iCloud+ 50GB</div>
+              <div class="alert-desc">Charged Mar 15 &middot; <span style="font-family:'Space Mono',monospace">&#8362;3.90</span>/mo</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <div class="panel-header">
+          <span style="font-size:14px">&#9650;</span>
+          <span class="panel-title">Opportunities</span>
+        </div>
+        <div class="reads-list">
+          <div class="read-row">
+            <div>
+              <div class="read-title">Booking.com — &euro;100 cashback</div>
+              <div class="read-by">Deadline ~Apr 14 &mdash; act now</div>
+            </div>
+            <span class="read-tag black">Act</span>
+          </div>
+          <div class="read-row">
+            <div>
+              <div class="read-title">ING — Up to &euro;250 cashback</div>
+              <div class="read-by">Stackable on insurance &amp; investments. Last chance.</div>
+            </div>
+            <span class="read-tag black">Act</span>
+          </div>
+          <div class="read-row">
+            <div>
+              <div class="read-title">E*TRADE dividend credited</div>
+              <div class="read-by">$0.04 Treasury Liquidity Fund &mdash; Mar 31</div>
+            </div>
+            <span class="read-tag teal">Info</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <span style="font-size:14px">&#9651;</span>
+        <span class="panel-title">Transport This Month</span>
+      </div>
+      <div class="transport-grid">
+        <div>
+          <div class="transport-num">&#8362;0</div>
+          <div class="transport-sub">GoTo car-share</div>
+        </div>
+        <div>
+          <div class="transport-num">&#8362;80</div>
+          <div class="transport-sub">Moovit / Rav Kav</div>
+        </div>
+        <div>
+          <div class="transport-num ok">vs &#8362;3,500</div>
+          <div class="transport-sub">Est. car ownership saving</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="panel">
+      <div class="panel-header">
+        <span style="font-size:14px">&#9632;</span>
+        <span class="panel-title">All Charges This Period</span>
+      </div>
+      <div class="reads-list">
+        <div class="read-row">
+          <div><div class="read-title">Imagine Festival — Stav</div><div class="read-by">Mar 18 &middot; one-time purchase</div></div>
+          <span class="read-tag black" style="font-family:'Space Mono',monospace;font-size:11px">&#8362;625</span>
+        </div>
+        <div class="read-row">
+          <div><div class="read-title">Moovit-Pango transit</div><div class="read-by">Mar 24 &middot; public transport top-up</div></div>
+          <span class="read-tag teal" style="font-family:'Space Mono',monospace;font-size:11px">&#8362;80</span>
+        </div>
+        <div class="read-row">
+          <div><div class="read-title">Gett ride</div><div class="read-by">Mar 23 &middot; taxi</div></div>
+          <span class="read-tag teal" style="font-family:'Space Mono',monospace;font-size:11px">&#8362;49</span>
+        </div>
+        <div class="read-row">
+          <div><div class="read-title">Anthropic API credits</div><div class="read-by">Apr 10 &middot; developer tools</div></div>
+          <span class="read-tag teal" style="font-family:'Space Mono',monospace;font-size:11px">$5</span>
+        </div>
+        <div class="read-row">
+          <div><div class="read-title">Apple iCloud+ 50GB</div><div class="read-by">Mar 15 &middot; monthly subscription</div></div>
+          <span class="read-tag teal" style="font-family:'Space Mono',monospace;font-size:11px">&#8362;3.90</span>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="cta-section">
+    <div class="cta-box">
+      <div class="cta-label">Need more clarity on any of these?</div>
+      <a class="cta-btn" href="#">&#128172; Ask on WhatsApp</a>
+    </div>
+  </div>
+
+  <footer>
+    <div class="footer-top">
+      <div>
+        <div class="footer-brand">j<span style="color:var(--teal)">i</span>st Personal CFO</div>
+        <div class="footer-tagline">Automated Intelligence for your Capital</div>
+      </div>
+      <a class="footer-upgrade" href="#">Upgrade to Pro</a>
+    </div>
+    <div class="footer-bottom">
+      <div class="footer-links">
+        <a class="footer-link" href="#">Dashboard</a>
+        <a class="footer-link" href="#">Settings</a>
+        <a class="footer-link" href="#">Unsubscribe</a>
+      </div>
+      <div class="footer-copy">&copy; 2026 JIST CURATED DATA.</div>
+    </div>
+  </footer>
+</div>
+</body></html>
