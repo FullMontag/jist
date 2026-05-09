@@ -125,13 +125,16 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
   console.log(`[email/inbound] Processing email from ${fromAddress}: "${data.subject}"`);
 
   // 1. Fetch full email content from Resend
+  const apiKey = process.env.RESEND_API_KEY;
+  console.log(`[email/inbound] API key present: ${!!apiKey}, starts with: ${apiKey?.slice(0, 6)}`);
   const contentRes = await fetch(`https://api.resend.com/emails/receiving/${data.email_id}`, {
-    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
+    headers: { Authorization: `Bearer ${apiKey}` },
   });
 
   if (!contentRes.ok) {
+    const body = await contentRes.text();
     throw new Error(
-      `Failed to fetch email content for ${data.email_id}: HTTP ${contentRes.status}`
+      `Failed to fetch email content for ${data.email_id}: HTTP ${contentRes.status} — ${body}`
     );
   }
 
