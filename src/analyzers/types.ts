@@ -34,11 +34,29 @@ export async function runAnalyzer<T>(
 ): Promise<AnalyzerResult<T> | null> {
   const filtered = analyzer.filter(allEmails);
   if (filtered.length === 0) return null;
+  return runAnalyzerOn(analyzer, filtered, llm);
+}
 
+// Like runAnalyzer but skips the keyword filter — use for inbound emails that
+// the user explicitly forwarded (they already decided the email is relevant).
+export async function runAnalyzerNoFilter<T>(
+  analyzer: Analyzer<T>,
+  emails: RawEmail[],
+  llm: LLMProvider
+): Promise<AnalyzerResult<T> | null> {
+  if (emails.length === 0) return null;
+  return runAnalyzerOn(analyzer, emails, llm);
+}
+
+async function runAnalyzerOn<T>(
+  analyzer: Analyzer<T>,
+  emails: RawEmail[],
+  llm: LLMProvider
+): Promise<AnalyzerResult<T>> {
   const output = await llm.completeStructured(
     {
       systemPrompt: analyzer.systemPrompt,
-      messages: [{ role: "user", content: analyzer.buildPrompt(filtered) }],
+      messages: [{ role: "user", content: analyzer.buildPrompt(emails) }],
       temperature: 0.1,
     },
     analyzer.outputSchema
@@ -48,7 +66,7 @@ export async function runAnalyzer<T>(
     analyzerId: analyzer.id,
     analyzerName: analyzer.name,
     output,
-    emailsProcessed: filtered.length,
+    emailsProcessed: emails.length,
     runAt: new Date(),
   };
 }

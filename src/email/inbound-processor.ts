@@ -13,7 +13,7 @@
 import { Resend } from "resend";
 import { subscriptionsAnalyzer } from "@/analyzers/subscriptions";
 import { renewalsAnalyzer } from "@/analyzers/renewals";
-import { runAnalyzer } from "@/analyzers/types";
+import { runAnalyzerNoFilter } from "@/analyzers/types";
 import { createProvider } from "@/llm";
 import { saveAnalyzerResults, saveTransactions } from "@/db/results";
 import { getAllUsersWithTokens } from "@/db/tokens";
@@ -177,13 +177,13 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
   const allResults: AnalyzerResult[] = [];
   const allTransactions = [];
 
-  const subsResult = await runAnalyzer(subscriptionsAnalyzer, [rawEmail], provider);
+  const subsResult = await runAnalyzerNoFilter(subscriptionsAnalyzer, [rawEmail], provider);
   if (subsResult) {
     allResults.push(subsResult as AnalyzerResult);
     allTransactions.push(...fromSubscriptions(subsResult.output as SubscriptionOutput));
   }
 
-  const renewalsResult = await runAnalyzer(renewalsAnalyzer, [rawEmail], provider);
+  const renewalsResult = await runAnalyzerNoFilter(renewalsAnalyzer, [rawEmail], provider);
   if (renewalsResult) {
     allResults.push(renewalsResult as AnalyzerResult);
     allTransactions.push(...fromRenewals(renewalsResult.output as RenewalsOutput));
