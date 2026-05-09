@@ -88,8 +88,22 @@ async function fetchAttachments(
         console.warn(`[email/inbound] Could not fetch attachment ${att.filename}: HTTP ${res.status}`);
         continue;
       }
-      const buf = await res.arrayBuffer();
-      const data = Buffer.from(buf).toString("base64");
+      // Resend may return raw binary OR a JSON envelope with base64 content.
+      // Check the response Content-Type to avoid double-encoding.
+      const ct = res.headers.get("content-type") ?? "";
+      let data: string;
+      if (ct.includes("application/json")) {
+        const json = await res.json() as { content?: string; data?: string };
+        data = (json.content ?? json.data ?? "").replace(/\s/g, "");
+      } else {
+        const buf = await res.arrayBuffer();
+        data = Buffer.from(buf).toString("base64");
+      }
+
+      if (!data) {
+        console.warn(`[email/inbound] Empty data for attachment ${att.filename} — skipping`);
+        continue;
+      }
 
       if (isImage) {
         images.push({ type: "image", mediaType: att.content_type as ImageContentBlock["mediaType"], data });
