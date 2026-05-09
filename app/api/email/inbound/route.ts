@@ -86,10 +86,15 @@ export async function POST(request: NextRequest) {
     `[email/inbound] Received email from ${emailData.from}: "${emailData.subject}"`
   );
 
-  // Process asynchronously — return 200 immediately so Resend doesn't retry
-  processInboundEmail(emailData).catch((err) => {
+  // Await processing before responding — Vercel kills the function the moment
+  // a response is sent, so fire-and-forget would silently drop all the work.
+  // Resend's webhook timeout is 30s, which is plenty for one email.
+  try {
+    await processInboundEmail(emailData);
+  } catch (err) {
     console.error("[email/inbound] Processing error:", err);
-  });
+    // Still return 200 so Resend doesn't retry — the error is logged above.
+  }
 
   return NextResponse.json({ ok: true });
 }
