@@ -17,8 +17,9 @@ function verifySignature(req: NextRequest, params: Record<string, string>): bool
 
 async function sendWhatsApp(to: string, body: string): Promise<void> {
   const client = twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!);
+  const from = process.env.TWILIO_WHATSAPP_NUMBER!;
   await client.messages.create({
-    from: process.env.TWILIO_WHATSAPP_NUMBER!,
+    from: from.startsWith("whatsapp:") ? from : `whatsapp:${from}`,
     to,
     body,
   });
