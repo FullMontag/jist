@@ -68,8 +68,15 @@ export async function extractPdfText(
 
       const result = pages.join("\n\n").trim();
       if (result) return result;
-    } catch {
-      // Wrong password or other error — try next
+    } catch (err: unknown) {
+      const name = (err as { name?: string }).name;
+      if (name === "PasswordException") {
+        // Wrong password — try next
+      } else {
+        // pdfjs crashed for an unrelated reason — log and abort
+        console.error("[pdf-decrypt] pdfjs error during decryption:", err);
+        return null;
+      }
     }
   }
   return null;
