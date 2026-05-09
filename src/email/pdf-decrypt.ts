@@ -34,14 +34,10 @@ async function getPdfjs(): Promise<typeof PdfjsType> {
   return pdfjs;
 }
 
-export async function isEncryptedPdf(data: Buffer): Promise<boolean> {
-  const pdfjs = await getPdfjs();
-  try {
-    await pdfjs.getDocument({ data: new Uint8Array(data), useWorkerFetch: false }).promise;
-    return false;
-  } catch (err: unknown) {
-    return (err as { name?: string }).name === "PasswordException";
-  }
+// Encrypted PDFs always contain an /Encrypt entry — check the bytes directly.
+// Faster and more reliable than loading pdfjs just to probe for encryption.
+export function isEncryptedPdf(data: Buffer): boolean {
+  return data.includes(Buffer.from("/Encrypt"));
 }
 
 // Returns extracted text, or null if none of the passwords worked.

@@ -279,7 +279,7 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
   if (pdfBuffers.length > 0) {
     const passwords = await getPdfPasswords(user.user_id);
     for (const buf of pdfBuffers) {
-      if (await isEncryptedPdf(buf)) {
+      if (isEncryptedPdf(buf)) {
         const text = await extractPdfText(buf, passwords);
         if (text) {
           console.log(`[email/inbound] Decrypted PDF — extracted ${text.length} chars`);
