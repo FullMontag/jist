@@ -6,18 +6,21 @@ function toAnthropicContent(
   content: LLMMessage["content"]
 ): Anthropic.MessageParam["content"] {
   if (typeof content === "string") return content;
-  return content.map((block) =>
-    block.type === "image"
-      ? {
-          type: "image" as const,
-          source: {
-            type: "base64" as const,
-            media_type: block.mediaType,
-            data: block.data,
-          },
-        }
-      : { type: "text" as const, text: block.text }
-  );
+  return content.map((block) => {
+    if (block.type === "image") {
+      return {
+        type: "image" as const,
+        source: { type: "base64" as const, media_type: block.mediaType, data: block.data },
+      };
+    }
+    if (block.type === "document") {
+      return {
+        type: "document" as const,
+        source: { type: "base64" as const, media_type: "application/pdf" as const, data: block.data },
+      };
+    }
+    return { type: "text" as const, text: block.text };
+  });
 }
 
 export class AnthropicProvider implements LLMProvider {

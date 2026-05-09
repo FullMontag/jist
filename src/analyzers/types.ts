@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { RawEmail } from "@/gmail/fetcher";
-import type { LLMProvider, ImageContentBlock } from "@/llm/types";
+import type { LLMProvider, MediaContentBlock } from "@/llm/types";
 import type { ProviderName } from "@/llm";
 
 export interface Analyzer<TOutput> {
@@ -44,7 +44,7 @@ export async function runAnalyzerNoFilter<T>(
   analyzer: Analyzer<T>,
   emails: RawEmail[],
   llm: LLMProvider,
-  images: ImageContentBlock[] = []
+  images: MediaContentBlock[] = []
 ): Promise<AnalyzerResult<T> | null> {
   if (emails.length === 0 && images.length === 0) return null;
   return runAnalyzerOn(analyzer, emails, llm, images);
@@ -54,7 +54,7 @@ async function runAnalyzerOn<T>(
   analyzer: Analyzer<T>,
   emails: RawEmail[],
   llm: LLMProvider,
-  images: ImageContentBlock[] = []
+  images: MediaContentBlock[] = []
 ): Promise<AnalyzerResult<T>> {
   const textPrompt = analyzer.buildPrompt(emails);
   const content = images.length > 0

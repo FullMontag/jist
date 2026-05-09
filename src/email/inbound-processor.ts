@@ -4,10 +4,11 @@
  * Called when a user forwards a bill/invoice to forward@velir.dev.
  * Flow:
  *   1. Fetch full email content from Resend API (webhook only carries metadata)
- *   2. Match sender to a user in the DB
- *   3. Run subscriptions + renewals analyzers on the single email
- *   4. Save results to Postgres
- *   5. Reply to the sender with a plain-text summary
+ *   2. Fetch all attachments (images → vision, PDFs → Claude document blocks)
+ *   3. Match sender to a user in the DB
+ *   4. Run subscriptions + renewals analyzers on the single email
+ *   5. Save results to Postgres
+ *   6. Reply to the sender with a plain-text summary
  */
 
 import { Resend } from "resend";
@@ -22,7 +23,7 @@ import type { RawEmail } from "@/gmail/fetcher";
 import type { SubscriptionOutput } from "@/analyzers/subscriptions";
 import type { RenewalsOutput } from "@/analyzers/renewals";
 import type { AnalyzerResult } from "@/analyzers/types";
-import type { ImageContentBlock } from "@/llm/types";
+import type { ImageContentBlock, DocumentContentBlock, MediaContentBlock } from "@/llm/types";
 
 // ── Resend API types ──────────────────────────────────────────────────────────
 
@@ -65,15 +66,19 @@ function extractInlineImages(html: string): ImageContentBlock[] {
   return images;
 }
 
-async function fetchImageAttachments(
+async function fetchAttachments(
   emailId: string,
   attachments: ResendAttachmentMeta[],
   apiKey: string
-): Promise<ImageContentBlock[]> {
+): Promise<{ images: ImageContentBlock[]; pdfs: DocumentContentBlock[] }> {
   const images: ImageContentBlock[] = [];
+  const pdfs: DocumentContentBlock[] = [];
 
   for (const att of attachments) {
-    if (!SUPPORTED_IMAGE_TYPES.has(att.content_type)) continue;
+    const isImage = SUPPORTED_IMAGE_TYPES.has(att.content_type);
+    const isPdf = att.content_type === "application/pdf";
+    if (!isImage && !isPdf) continue;
+
     try {
       const res = await fetch(
         `https://api.resend.com/emails/receiving/${emailId}/attachments/${att.id}`,
@@ -85,18 +90,20 @@ async function fetchImageAttachments(
       }
       const buf = await res.arrayBuffer();
       const data = Buffer.from(buf).toString("base64");
-      images.push({
-        type: "image",
-        mediaType: att.content_type as ImageContentBlock["mediaType"],
-        data,
-      });
-      console.log(`[email/inbound] Loaded image attachment: ${att.filename}`);
+
+      if (isImage) {
+        images.push({ type: "image", mediaType: att.content_type as ImageContentBlock["mediaType"], data });
+        console.log(`[email/inbound] Loaded image attachment: ${att.filename}`);
+      } else {
+        pdfs.push({ type: "document", mediaType: "application/pdf", data });
+        console.log(`[email/inbound] Loaded PDF attachment: ${att.filename}`);
+      }
     } catch (err) {
       console.warn(`[email/inbound] Failed to fetch attachment ${att.filename}:`, err);
     }
   }
 
-  return images;
+  return { images, pdfs };
 }
 
 function extractEmailAddress(header: string): string {
@@ -211,12 +218,28 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
     ? emailContent.text
     : stripHtml(emailContent.html ?? "");
 
-  if (!rawBody.trim()) {
-    console.warn(`[email/inbound] Empty body for ${data.email_id} — skipping`);
+  // 2. Fetch all MIME attachments (images + PDFs) before deciding whether to proceed
+  const apiKey = process.env.RESEND_API_KEY!;
+  const { images: mimeImages, pdfs } = emailContent.attachments?.length
+    ? await fetchAttachments(data.email_id, emailContent.attachments, apiKey)
+    : { images: [], pdfs: [] };
+
+  const allImages: MediaContentBlock[] = [...inlineImages, ...mimeImages, ...pdfs];
+
+  if (allImages.length > 0) {
+    console.log(
+      `[email/inbound] ${allImages.length} media block(s): ` +
+      `${inlineImages.length} inline image, ${mimeImages.length} image attachment, ${pdfs.length} PDF`
+    );
+  }
+
+  // Bail only if there is truly no content to analyze
+  if (!rawBody.trim() && allImages.length === 0) {
+    console.warn(`[email/inbound] Empty body and no attachments for ${data.email_id} — skipping`);
     return;
   }
 
-  // 2. Match sender to a registered user
+  // 3. Match sender to a registered user
   const users = await getAllUsersWithTokens();
   const user = users.find(
     (u) => u.email.toLowerCase() === fromAddress
@@ -227,7 +250,7 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
     return;
   }
 
-  // 3. Build a RawEmail from the fetched content
+  // 4. Build a RawEmail from the fetched content
   const rawEmail: RawEmail = {
     id: data.email_id,
     threadId: data.email_id,
@@ -239,19 +262,6 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
     body: rawBody.slice(0, 6000), // generous limit for a single forwarded doc
     labelIds: [],
   };
-
-  // 4. Fetch image attachments (WhatsApp photos, scanned receipts, etc.)
-  const apiKey = process.env.RESEND_API_KEY!;
-  const mimeImages = emailContent.attachments?.length
-    ? await fetchImageAttachments(data.email_id, emailContent.attachments, apiKey)
-    : [];
-
-  // Merge MIME attachment images with inline base64 images extracted from HTML
-  const allImages = [...inlineImages, ...mimeImages];
-
-  if (allImages.length > 0) {
-    console.log(`[email/inbound] ${allImages.length} image(s) total (${inlineImages.length} inline, ${mimeImages.length} attachment) will be passed to LLM`);
-  }
 
   // 5. Run subscriptions + renewals analyzers (not opportunities — that's inbox-only)
   const provider = createProvider("anthropic");
@@ -284,7 +294,7 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
     `[email/inbound] Saved ${allResults.length} results, ${transactions.length} transactions for ${user.email}`
   );
 
-  // 6. Reply with a summary
+  // 7. Reply with a summary
   const fromEmail = process.env.DIGEST_FROM_EMAIL ?? "onboarding@resend.dev";
   const replySummary = buildReplySummary(allResults, data.subject);
 

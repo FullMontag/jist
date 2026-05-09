@@ -6,10 +6,18 @@ export interface ImageContentBlock {
   data: string; // base64-encoded
 }
 
+export interface DocumentContentBlock {
+  type: "document";
+  mediaType: "application/pdf";
+  data: string; // base64-encoded
+}
+
+export type MediaContentBlock = ImageContentBlock | DocumentContentBlock;
+
 export interface LLMMessage {
   role: "user" | "assistant" | "system";
-  // string for normal text-only messages; array to mix text + images
-  content: string | Array<{ type: "text"; text: string } | ImageContentBlock>;
+  // string for normal text-only messages; array to mix text + images + docs
+  content: string | Array<{ type: "text"; text: string } | MediaContentBlock>;
 }
 
 export interface LLMRequest {
