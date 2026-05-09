@@ -1,6 +1,6 @@
 import { z } from "zod";
 import type { RawEmail } from "@/gmail/fetcher";
-import type { LLMProvider } from "@/llm/types";
+import type { LLMProvider, ImageContentBlock } from "@/llm/types";
 import type { ProviderName } from "@/llm";
 
 export interface Analyzer<TOutput> {
@@ -39,24 +39,32 @@ export async function runAnalyzer<T>(
 
 // Like runAnalyzer but skips the keyword filter — use for inbound emails that
 // the user explicitly forwarded (they already decided the email is relevant).
+// Pass `images` to include receipt photos or scanned documents alongside the text.
 export async function runAnalyzerNoFilter<T>(
   analyzer: Analyzer<T>,
   emails: RawEmail[],
-  llm: LLMProvider
+  llm: LLMProvider,
+  images: ImageContentBlock[] = []
 ): Promise<AnalyzerResult<T> | null> {
-  if (emails.length === 0) return null;
-  return runAnalyzerOn(analyzer, emails, llm);
+  if (emails.length === 0 && images.length === 0) return null;
+  return runAnalyzerOn(analyzer, emails, llm, images);
 }
 
 async function runAnalyzerOn<T>(
   analyzer: Analyzer<T>,
   emails: RawEmail[],
-  llm: LLMProvider
+  llm: LLMProvider,
+  images: ImageContentBlock[] = []
 ): Promise<AnalyzerResult<T>> {
+  const textPrompt = analyzer.buildPrompt(emails);
+  const content = images.length > 0
+    ? [{ type: "text" as const, text: textPrompt }, ...images]
+    : textPrompt;
+
   const output = await llm.completeStructured(
     {
       systemPrompt: analyzer.systemPrompt,
-      messages: [{ role: "user", content: analyzer.buildPrompt(emails) }],
+      messages: [{ role: "user", content }],
       temperature: 0.1,
     },
     analyzer.outputSchema

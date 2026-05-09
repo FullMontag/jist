@@ -1,8 +1,15 @@
 import { z } from "zod";
 
+export interface ImageContentBlock {
+  type: "image";
+  mediaType: "image/jpeg" | "image/png" | "image/gif" | "image/webp";
+  data: string; // base64-encoded
+}
+
 export interface LLMMessage {
   role: "user" | "assistant" | "system";
-  content: string;
+  // string for normal text-only messages; array to mix text + images
+  content: string | Array<{ type: "text"; text: string } | ImageContentBlock>;
 }
 
 export interface LLMRequest {

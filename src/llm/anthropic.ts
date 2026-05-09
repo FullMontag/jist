@@ -1,6 +1,24 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { z } from "zod";
-import type { LLMProvider, LLMRequest } from "./types";
+import type { LLMProvider, LLMRequest, LLMMessage } from "./types";
+
+function toAnthropicContent(
+  content: LLMMessage["content"]
+): Anthropic.MessageParam["content"] {
+  if (typeof content === "string") return content;
+  return content.map((block) =>
+    block.type === "image"
+      ? {
+          type: "image" as const,
+          source: {
+            type: "base64" as const,
+            media_type: block.mediaType,
+            data: block.data,
+          },
+        }
+      : { type: "text" as const, text: block.text }
+  );
+}
 
 export class AnthropicProvider implements LLMProvider {
   readonly name = "anthropic";
@@ -19,7 +37,7 @@ export class AnthropicProvider implements LLMProvider {
       system: request.systemPrompt,
       messages: request.messages.map((m) => ({
         role: m.role === "system" ? "user" : m.role,
-        content: m.content,
+        content: toAnthropicContent(m.content),
       })),
     });
 
@@ -48,7 +66,7 @@ export class AnthropicProvider implements LLMProvider {
       tool_choice: { type: "tool", name: "structured_output" },
       messages: request.messages.map((m) => ({
         role: m.role === "system" ? "user" : m.role,
-        content: m.content,
+        content: toAnthropicContent(m.content),
       })),
     });
 

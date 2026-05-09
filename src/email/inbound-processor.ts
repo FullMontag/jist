@@ -22,8 +22,15 @@ import type { RawEmail } from "@/gmail/fetcher";
 import type { SubscriptionOutput } from "@/analyzers/subscriptions";
 import type { RenewalsOutput } from "@/analyzers/renewals";
 import type { AnalyzerResult } from "@/analyzers/types";
+import type { ImageContentBlock } from "@/llm/types";
 
-// ── Resend API types for inbound email content ────────────────────────────────
+// ── Resend API types ──────────────────────────────────────────────────────────
+
+interface ResendAttachmentMeta {
+  id: string;
+  filename: string;
+  content_type: string;
+}
 
 interface ResendEmailContent {
   id: string;
@@ -33,9 +40,48 @@ interface ResendEmailContent {
   html?: string;
   text?: string;
   created_at: string;
+  attachments?: ResendAttachmentMeta[];
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+const SUPPORTED_IMAGE_TYPES = new Set([
+  "image/jpeg", "image/png", "image/gif", "image/webp",
+]);
+
+async function fetchImageAttachments(
+  emailId: string,
+  attachments: ResendAttachmentMeta[],
+  apiKey: string
+): Promise<ImageContentBlock[]> {
+  const images: ImageContentBlock[] = [];
+
+  for (const att of attachments) {
+    if (!SUPPORTED_IMAGE_TYPES.has(att.content_type)) continue;
+    try {
+      const res = await fetch(
+        `https://api.resend.com/emails/receiving/${emailId}/attachments/${att.id}`,
+        { headers: { Authorization: `Bearer ${apiKey}` } }
+      );
+      if (!res.ok) {
+        console.warn(`[email/inbound] Could not fetch attachment ${att.filename}: HTTP ${res.status}`);
+        continue;
+      }
+      const buf = await res.arrayBuffer();
+      const data = Buffer.from(buf).toString("base64");
+      images.push({
+        type: "image",
+        mediaType: att.content_type as ImageContentBlock["mediaType"],
+        data,
+      });
+      console.log(`[email/inbound] Loaded image attachment: ${att.filename}`);
+    } catch (err) {
+      console.warn(`[email/inbound] Failed to fetch attachment ${att.filename}:`, err);
+    }
+  }
+
+  return images;
+}
 
 function extractEmailAddress(header: string): string {
   // "Name <email@example.com>" → "email@example.com"
@@ -125,10 +171,8 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
   console.log(`[email/inbound] Processing email from ${fromAddress}: "${data.subject}"`);
 
   // 1. Fetch full email content from Resend
-  const apiKey = process.env.RESEND_API_KEY;
-  console.log(`[email/inbound] API key present: ${!!apiKey}, starts with: ${apiKey?.slice(0, 6)}`);
   const contentRes = await fetch(`https://api.resend.com/emails/receiving/${data.email_id}`, {
-    headers: { Authorization: `Bearer ${apiKey}` },
+    headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
   });
 
   if (!contentRes.ok) {
@@ -172,24 +216,34 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
     labelIds: [],
   };
 
-  // 4. Run subscriptions + renewals analyzers (not opportunities — that's inbox-only)
+  // 4. Fetch image attachments (WhatsApp photos, scanned receipts, etc.)
+  const apiKey = process.env.RESEND_API_KEY!;
+  const images = emailContent.attachments?.length
+    ? await fetchImageAttachments(data.email_id, emailContent.attachments, apiKey)
+    : [];
+
+  if (images.length > 0) {
+    console.log(`[email/inbound] ${images.length} image attachment(s) will be passed to LLM`);
+  }
+
+  // 5. Run subscriptions + renewals analyzers (not opportunities — that's inbox-only)
   const provider = createProvider("anthropic");
   const allResults: AnalyzerResult[] = [];
   const allTransactions = [];
 
-  const subsResult = await runAnalyzerNoFilter(subscriptionsAnalyzer, [rawEmail], provider);
+  const subsResult = await runAnalyzerNoFilter(subscriptionsAnalyzer, [rawEmail], provider, images);
   if (subsResult) {
     allResults.push(subsResult as AnalyzerResult);
     allTransactions.push(...fromSubscriptions(subsResult.output as SubscriptionOutput));
   }
 
-  const renewalsResult = await runAnalyzerNoFilter(renewalsAnalyzer, [rawEmail], provider);
+  const renewalsResult = await runAnalyzerNoFilter(renewalsAnalyzer, [rawEmail], provider, images);
   if (renewalsResult) {
     allResults.push(renewalsResult as AnalyzerResult);
     allTransactions.push(...fromRenewals(renewalsResult.output as RenewalsOutput));
   }
 
-  // 5. Persist
+  // 6. Persist
   if (allResults.length > 0) {
     await saveAnalyzerResults(user.user_id, allResults);
   }
