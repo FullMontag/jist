@@ -125,7 +125,7 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
   console.log(`[email/inbound] Processing email from ${fromAddress}: "${data.subject}"`);
 
   // 1. Fetch full email content from Resend
-  const contentRes = await fetch(`https://api.resend.com/emails/${data.email_id}`, {
+  const contentRes = await fetch(`https://api.resend.com/emails/receiving/${data.email_id}`, {
     headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}` },
   });
 
