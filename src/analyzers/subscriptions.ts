@@ -1,6 +1,7 @@
 import { z } from "zod";
 import type { RawEmail } from "@/gmail/fetcher";
 import type { Analyzer } from "./types";
+import { ISRAELI_SENDER_DOMAINS } from "./israeli-senders";
 
 const SUBSCRIPTION_KEYWORDS = [
   // English billing terms
@@ -25,48 +26,19 @@ const SUBSCRIPTION_KEYWORDS = [
   "תשלום",
   "חידוש",
   "חשבון",
-  // Israeli telecom & utilities
-  "pelephone.co.il",
-  "bezeq.co.il",
-  "hot.net.il",
-  "hotmobile.co.il",
-  "partner.co.il",
-  "cellcom.co.il",
-  "yes.co.il",
-  "019mobile.co.il",
-  "iec.co.il",
+  // Israeli Hebrew keywords (domains are handled separately via ISRAELI_SENDER_DOMAINS)
   "פלאפון",
   "בזק",
   "הוט",
   "פרטנר",
   "סלקום",
   "חברת חשמל",
-  // Israeli insurance
-  "migdal.co.il",
-  "harel.co.il",
-  "clal.co.il",
-  "phoenix.co.il",
-  "menora.co.il",
   "מגדל",
   "הראל",
   "כלל ביטוח",
   "הפניקס",
   "מנורה",
   "ביטוח",
-  // Israeli banks & finance
-  "leumi.co.il",
-  "hapoalim.co.il",
-  "mizrahi-tefahot.co.il",
-  "discountbank.co.il",
-  "max.co.il",
-  "cal-online.co.il",
-  "isracard.co.il",
-  // Other Israeli billing senders
-  "invoice4u.co.il",
-  "gotoglobal.com",
-  "cardcom.co.il",
-  "apple.com",
-  "gov.il",
   "arnona",
   "ארנונה",
   "ועד בית",
@@ -102,7 +74,10 @@ export const subscriptionsAnalyzer: Analyzer<SubscriptionOutput> = {
     const lower = (s: string) => s.toLowerCase();
     return emails.filter((e) => {
       const text = lower(`${e.subject} ${e.from} ${e.snippet}`);
-      return SUBSCRIPTION_KEYWORDS.some((kw) => text.includes(kw));
+      if (SUBSCRIPTION_KEYWORDS.some((kw) => text.includes(kw))) return true;
+      // Also catch emails from known Israeli sender domains
+      const from = lower(e.from);
+      return ISRAELI_SENDER_DOMAINS.some((d) => from.includes(d));
     });
   },
 
