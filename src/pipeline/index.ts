@@ -1,5 +1,6 @@
 import type { OAuth2Client } from "google-auth-library";
 import { fetchEmailsSince } from "@/gmail/fetcher";
+import { enrichEmailsWithPdfText } from "@/gmail/attachments";
 import { ANALYZERS, runAnalyzer } from "@/analyzers";
 import { createProvider } from "@/llm";
 import {
@@ -7,6 +8,7 @@ import {
   saveTransactions,
   clearUserTransactions,
   saveTransportationMonthly,
+  getKnownServiceKeywords,
 } from "@/db";
 import type { SubscriptionOutput } from "@/analyzers/subscriptions";
 import type { RenewalsOutput } from "@/analyzers/renewals";
@@ -123,13 +125,23 @@ export async function runPipeline(
   daysBack: number,
   maxResults = 200
 ): Promise<PipelineResult> {
-  const emails = await fetchEmailsSince(auth, daysBack, maxResults);
+  const rawEmails = await fetchEmailsSince(auth, daysBack, maxResults);
+
+  // Enrich emails that have PDF attachments — uses stored passwords for encrypted ones
+  const emails = await enrichEmailsWithPdfText(auth, userId, rawEmails);
+
+  // Load per-user learned service keywords to augment the static filter
+  const userKeywords = await getKnownServiceKeywords(userId);
+  if (userKeywords.length > 0) {
+    console.log(`[pipeline] ${userKeywords.length} user-learned keyword(s) active`);
+  }
+
   const allResults: AnalyzerResult[] = [];
   const allTransactions: TransactionRow[] = [];
 
   for (const analyzer of ANALYZERS) {
     const provider = createProvider(analyzer.provider);
-    const result = await runAnalyzer(analyzer, emails, provider);
+    const result = await runAnalyzer(analyzer, emails, provider, userKeywords);
     if (!result) continue;
 
     allResults.push(result as AnalyzerResult);

@@ -30,9 +30,23 @@ export interface AnalyzerResult<TOutput = unknown> {
 export async function runAnalyzer<T>(
   analyzer: Analyzer<T>,
   allEmails: RawEmail[],
-  llm: LLMProvider
+  llm: LLMProvider,
+  userKeywords: string[] = []
 ): Promise<AnalyzerResult<T> | null> {
-  const filtered = analyzer.filter(allEmails);
+  let filtered = analyzer.filter(allEmails);
+
+  // Also include emails that match the user's learned service keywords but
+  // didn't make it through the static keyword filter.
+  if (userKeywords.length > 0) {
+    const seen = new Set(filtered.map((e) => e.id));
+    const extra = allEmails.filter((e) => {
+      if (seen.has(e.id)) return false;
+      const text = `${e.subject} ${e.from} ${e.snippet}`.toLowerCase();
+      return userKeywords.some((kw) => text.includes(kw));
+    });
+    filtered = [...filtered, ...extra];
+  }
+
   if (filtered.length === 0) return null;
   return runAnalyzerOn(analyzer, filtered, llm);
 }

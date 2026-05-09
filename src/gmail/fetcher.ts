@@ -12,6 +12,8 @@ export interface RawEmail {
   snippet: string;
   body: string;
   labelIds: string[];
+  // Gmail attachment IDs for PDF parts (populated by fetchEmailsSince)
+  pdfAttachmentIds?: string[];
 }
 
 function decodeBody(data: string): string {
@@ -31,6 +33,17 @@ function stripHtml(html: string): string {
     .replace(/&#x27;/g, "'")
     .replace(/\s{2,}/g, "\n")
     .trim();
+}
+
+function extractPdfAttachmentIds(payload: gmail_v1.Schema$MessagePart): string[] {
+  const ids: string[] = [];
+  if (payload.mimeType === "application/pdf" && payload.body?.attachmentId) {
+    ids.push(payload.body.attachmentId);
+  }
+  for (const part of payload.parts ?? []) {
+    ids.push(...extractPdfAttachmentIds(part));
+  }
+  return ids;
 }
 
 function extractBody(payload: gmail_v1.Schema$MessagePart): string {
@@ -103,6 +116,7 @@ export async function fetchEmailsSince(
         snippet: full.data.snippet ?? "",
         body: extractBody(payload),
         labelIds: full.data.labelIds ?? [],
+        pdfAttachmentIds: extractPdfAttachmentIds(payload),
       } satisfies RawEmail;
     })
   );

@@ -19,6 +19,7 @@ import { createProvider } from "@/llm";
 import { saveAnalyzerResults, saveTransactions } from "@/db/results";
 import { getAllUsersWithTokens } from "@/db/tokens";
 import { getPdfPasswords } from "@/db/pdf-passwords";
+import { addKnownServices } from "@/db/known-services";
 import { fromSubscriptions, fromRenewals, deduplicateTransactions } from "@/pipeline";
 import { isEncryptedPdf, extractPdfText } from "@/email/pdf-decrypt";
 import type { RawEmail } from "@/gmail/fetcher";
@@ -348,7 +349,20 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
       `[email/inbound] Saved ${allResults.length} results, ${transactions.length} transactions for ${user.email}`
     );
 
-    // 8. Reply with a summary
+    // 8. Learn new service names for future weekly sweeps
+    const learnedServices = allResults.flatMap((r) => {
+      if (r.analyzerId === "subscriptions")
+        return ((r.output as SubscriptionOutput).subscriptions ?? []).map((s) => s.service);
+      if (r.analyzerId === "renewals")
+        return ((r.output as RenewalsOutput).renewals ?? []).map((s) => s.service);
+      return [];
+    });
+    if (learnedServices.length > 0) {
+      await addKnownServices(user.user_id, learnedServices);
+      console.log(`[email/inbound] Learned ${learnedServices.length} service keyword(s) for future sweeps`);
+    }
+
+    // 9. Reply with a summary
     await sendReply(resend, fromAddress, data.subject, buildReplySummary(allResults, data.subject));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
