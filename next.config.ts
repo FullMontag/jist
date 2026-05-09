@@ -1,7 +1,7 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
-  serverExternalPackages: ["googleapis"],
+  serverExternalPackages: ["googleapis", "pdfjs-dist"],
 };
 
 export default nextConfig;

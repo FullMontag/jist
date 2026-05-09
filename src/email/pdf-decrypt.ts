@@ -3,21 +3,25 @@
  *
  * - isEncryptedPdf: quick check before sending to Claude
  * - extractPdfText: decrypt + extract text with pdfjs-dist (Node.js, no worker)
+ *
+ * pdfjs-dist is listed in serverExternalPackages so Next.js doesn't bundle it.
  */
 
-// pdfjs-dist legacy build works without a DOM / worker in Node.js serverless
-// eslint-disable-next-line @typescript-eslint/no-require-imports
-const pdfjs = require("pdfjs-dist/legacy/build/pdf.js") as typeof import("pdfjs-dist");
+import type * as PdfjsType from "pdfjs-dist";
 
-// Disable the worker — not available in Vercel serverless
-pdfjs.GlobalWorkerOptions.workerSrc = "";
+// Dynamic import at call time — avoids bundler issues with the .mjs build
+async function getPdfjs(): Promise<typeof PdfjsType> {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs" as string) as typeof PdfjsType;
+  pdfjs.GlobalWorkerOptions.workerSrc = "";
+  return pdfjs;
+}
 
 export async function isEncryptedPdf(data: Buffer): Promise<boolean> {
+  const pdfjs = await getPdfjs();
   try {
     await pdfjs.getDocument({ data: new Uint8Array(data), useWorkerFetch: false }).promise;
     return false;
   } catch (err: unknown) {
-    // pdfjs throws PasswordException for encrypted PDFs
     return (err as { name?: string }).name === "PasswordException";
   }
 }
@@ -27,6 +31,8 @@ export async function extractPdfText(
   data: Buffer,
   passwords: string[]
 ): Promise<string | null> {
+  const pdfjs = await getPdfjs();
+
   for (const password of passwords) {
     try {
       const pdf = await pdfjs.getDocument({
@@ -49,7 +55,7 @@ export async function extractPdfText(
       const result = pages.join("\n\n").trim();
       if (result) return result;
     } catch {
-      // Wrong password — try next
+      // Wrong password or other error — try next
     }
   }
   return null;
