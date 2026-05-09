@@ -93,8 +93,10 @@ async function fetchAttachments(
       const ct = res.headers.get("content-type") ?? "";
       let data: string;
       if (ct.includes("application/json")) {
-        const json = await res.json() as { content?: string; data?: string };
-        data = (json.content ?? json.data ?? "").replace(/\s/g, "");
+        const json = await res.json() as Record<string, unknown>;
+        console.log(`[email/inbound] Attachment JSON keys for ${att.filename}:`, Object.keys(json));
+        const raw = (json.content ?? json.data ?? json.base64 ?? json.body ?? "") as string;
+        data = raw.replace(/\s/g, "");
       } else {
         const buf = await res.arrayBuffer();
         data = Buffer.from(buf).toString("base64");
