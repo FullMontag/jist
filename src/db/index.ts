@@ -1,6 +1,7 @@
 export { getDb } from "./client";
 export { addPdfPassword, getPdfPasswords } from "./pdf-passwords";
 export { addKnownServices, getKnownServiceKeywords } from "./known-services";
+export { getUserByWhatsAppNumber } from "./user-phones";
 export { saveGmailTokens, getGmailTokens, getAllUsersWithTokens } from "./tokens";
 export {
   saveDigestRun,
