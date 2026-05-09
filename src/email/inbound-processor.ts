@@ -18,7 +18,9 @@ import { runAnalyzerNoFilter } from "@/analyzers/types";
 import { createProvider } from "@/llm";
 import { saveAnalyzerResults, saveTransactions } from "@/db/results";
 import { getAllUsersWithTokens } from "@/db/tokens";
+import { getPdfPasswords } from "@/db/pdf-passwords";
 import { fromSubscriptions, fromRenewals, deduplicateTransactions } from "@/pipeline";
+import { isEncryptedPdf, extractPdfText } from "@/email/pdf-decrypt";
 import type { RawEmail } from "@/gmail/fetcher";
 import type { SubscriptionOutput } from "@/analyzers/subscriptions";
 import type { RenewalsOutput } from "@/analyzers/renewals";
@@ -70,9 +72,9 @@ async function fetchAttachments(
   emailId: string,
   attachments: ResendAttachmentMeta[],
   apiKey: string
-): Promise<{ images: ImageContentBlock[]; pdfs: DocumentContentBlock[] }> {
+): Promise<{ images: ImageContentBlock[]; pdfBuffers: Buffer[] }> {
   const images: ImageContentBlock[] = [];
-  const pdfs: DocumentContentBlock[] = [];
+  const pdfBuffers: Buffer[] = [];
 
   for (const att of attachments) {
     const isImage = SUPPORTED_IMAGE_TYPES.has(att.content_type);
@@ -108,7 +110,7 @@ async function fetchAttachments(
         images.push({ type: "image", mediaType: att.content_type as ImageContentBlock["mediaType"], data });
         console.log(`[email/inbound] Loaded image attachment: ${att.filename}`);
       } else {
-        pdfs.push({ type: "document", mediaType: "application/pdf", data });
+        pdfBuffers.push(Buffer.from(buf));
         console.log(`[email/inbound] Loaded PDF attachment: ${att.filename}`);
       }
     } catch (err) {
@@ -116,7 +118,7 @@ async function fetchAttachments(
     }
   }
 
-  return { images, pdfs };
+  return { images, pdfBuffers };
 }
 
 function extractEmailAddress(header: string): string {
@@ -233,21 +235,12 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
 
   // 2. Fetch all MIME attachments (images + PDFs) before deciding whether to proceed
   const apiKey = process.env.RESEND_API_KEY!;
-  const { images: mimeImages, pdfs } = emailContent.attachments?.length
+  const { images: mimeImages, pdfBuffers } = emailContent.attachments?.length
     ? await fetchAttachments(data.email_id, emailContent.attachments, apiKey)
-    : { images: [], pdfs: [] };
-
-  const allImages: MediaContentBlock[] = [...inlineImages, ...mimeImages, ...pdfs];
-
-  if (allImages.length > 0) {
-    console.log(
-      `[email/inbound] ${allImages.length} media block(s): ` +
-      `${inlineImages.length} inline image, ${mimeImages.length} image attachment, ${pdfs.length} PDF`
-    );
-  }
+    : { images: [], pdfBuffers: [] };
 
   // Bail only if there is truly no content to analyze
-  if (!rawBody.trim() && allImages.length === 0) {
+  if (!rawBody.trim() && inlineImages.length === 0 && mimeImages.length === 0 && pdfBuffers.length === 0) {
     console.warn(`[email/inbound] Empty body and no attachments for ${data.email_id} — skipping`);
     return;
   }
@@ -263,7 +256,39 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
     return;
   }
 
-  // 4. Build a RawEmail from the fetched content
+  // 4. Resolve PDFs: encrypted ones are decrypted + text-extracted using stored passwords;
+  //    unencrypted ones are passed as native Claude document blocks.
+  let extraBodyText = "";
+  const pdfDocBlocks: DocumentContentBlock[] = [];
+
+  if (pdfBuffers.length > 0) {
+    const passwords = await getPdfPasswords(user.user_id);
+    for (const buf of pdfBuffers) {
+      if (await isEncryptedPdf(buf)) {
+        const text = await extractPdfText(buf, passwords);
+        if (text) {
+          console.log(`[email/inbound] Decrypted PDF — extracted ${text.length} chars`);
+          extraBodyText += "\n\n" + text;
+        } else {
+          console.warn(`[email/inbound] Encrypted PDF but no stored password worked — skipping`);
+        }
+      } else {
+        pdfDocBlocks.push({ type: "document", mediaType: "application/pdf", data: buf.toString("base64") });
+      }
+    }
+  }
+
+  const allImages: MediaContentBlock[] = [...inlineImages, ...mimeImages, ...pdfDocBlocks];
+
+  if (allImages.length > 0 || extraBodyText) {
+    console.log(
+      `[email/inbound] Content: ${inlineImages.length} inline image, ${mimeImages.length} image attachment, ` +
+      `${pdfDocBlocks.length} PDF block, ${extraBodyText.length} chars from decrypted PDF(s)`
+    );
+  }
+
+  // 5. Build a RawEmail from the fetched content
+  const combinedBody = (rawBody + extraBodyText).slice(0, 8000);
   const rawEmail: RawEmail = {
     id: data.email_id,
     threadId: data.email_id,
@@ -271,12 +296,12 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
     from: data.from,
     to: data.to.join(", "),
     date: emailContent.created_at ?? new Date().toISOString(),
-    snippet: rawBody.slice(0, 200),
-    body: rawBody.slice(0, 6000), // generous limit for a single forwarded doc
+    snippet: combinedBody.slice(0, 200),
+    body: combinedBody,
     labelIds: [],
   };
 
-  // 5. Run subscriptions + renewals analyzers (not opportunities — that's inbox-only)
+  // 6. Run subscriptions + renewals analyzers (not opportunities — that's inbox-only)
   const provider = createProvider("anthropic");
   const allResults: AnalyzerResult[] = [];
   const allTransactions = [];
@@ -293,7 +318,7 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
     allTransactions.push(...fromRenewals(renewalsResult.output as RenewalsOutput));
   }
 
-  // 6. Persist
+  // 7. Persist
   if (allResults.length > 0) {
     await saveAnalyzerResults(user.user_id, allResults);
   }
@@ -307,7 +332,7 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
     `[email/inbound] Saved ${allResults.length} results, ${transactions.length} transactions for ${user.email}`
   );
 
-  // 7. Reply with a summary
+  // 8. Reply with a summary
   const fromEmail = process.env.DIGEST_FROM_EMAIL ?? "onboarding@resend.dev";
   const replySummary = buildReplySummary(allResults, data.subject);
 

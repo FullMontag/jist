@@ -1,4 +1,5 @@
 export { getDb } from "./client";
+export { addPdfPassword, getPdfPasswords } from "./pdf-passwords";
 export { saveGmailTokens, getGmailTokens, getAllUsersWithTokens } from "./tokens";
 export {
   saveDigestRun,
