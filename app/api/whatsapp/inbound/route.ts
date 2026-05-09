@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { after } from "next/server";
 import twilio from "twilio";
 import { getUserByWhatsAppNumber } from "@/db/user-phones";
 import { processWhatsAppMessage } from "@/whatsapp/processor";
@@ -14,11 +15,12 @@ function verifySignature(req: NextRequest, params: Record<string, string>): bool
   );
 }
 
-function twimlReply(text: string): NextResponse {
-  const twiml = new twilio.twiml.MessagingResponse();
-  twiml.message(text);
-  return new NextResponse(twiml.toString(), {
-    headers: { "Content-Type": "text/xml" },
+async function sendWhatsApp(to: string, body: string): Promise<void> {
+  const client = twilio(process.env.TWILIO_ACCOUNT_SID!, process.env.TWILIO_AUTH_TOKEN!);
+  await client.messages.create({
+    from: process.env.TWILIO_WHATSAPP_NUMBER!,
+    to,
+    body,
   });
 }
 
@@ -40,7 +42,9 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
   const user = await getUserByWhatsAppNumber(from);
   if (!user) {
     console.warn(`[whatsapp/inbound] Unknown sender: ${from}`);
-    return twimlReply("This number isn't registered with Jist. Ask your Jist admin to add it.");
+    const twiml = new twilio.twiml.MessagingResponse();
+    twiml.message("This number isn't registered with Jist.");
+    return new NextResponse(twiml.toString(), { headers: { "Content-Type": "text/xml" } });
   }
 
   const mediaItems = Array.from({ length: numMedia }, (_, i) => ({
@@ -48,12 +52,18 @@ export async function POST(req: NextRequest): Promise<NextResponse> {
     contentType: params[`MediaContentType${i}`] ?? "",
   })).filter((m) => m.url);
 
-  try {
-    const reply = await processWhatsAppMessage(user.user_id, { from, body, mediaItems });
-    return twimlReply(reply);
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    console.error("[whatsapp/inbound] Processing error:", err);
-    return twimlReply(`Something went wrong: ${message}`);
-  }
+  // Respond to Twilio immediately — processing happens after the response
+  after(async () => {
+    try {
+      const reply = await processWhatsAppMessage(user.user_id, { from, body, mediaItems });
+      await sendWhatsApp(from, reply);
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      console.error("[whatsapp/inbound] Processing error:", err);
+      await sendWhatsApp(from, `Something went wrong: ${message}`).catch(() => {});
+    }
+  });
+
+  // Empty TwiML — actual reply sent via API above
+  return new NextResponse("<Response/>", { headers: { "Content-Type": "text/xml" } });
 }
