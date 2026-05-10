@@ -38,7 +38,7 @@ function formatCreditCardTransactions(rows: CreditCardTransactionRow[]): string 
       `  Transactions:`,
       ...txns.map((t) => {
         const sym = t.currency === "ILS" ? "₪" : t.currency === "USD" ? "$" : t.currency;
-        return `    ${t.date} ${t.merchant} ${sym}${t.amount} [${t.category}]`;
+        return `    ${String(t.date).slice(0, 10)} ${t.merchant} ${sym}${t.amount} [${t.category}]`;
       }),
     ];
     parts.push(lines.join("\n"));
@@ -76,7 +76,7 @@ export async function answerQuestion(userId: string, question: string): Promise<
   const today = new Date().toISOString().split("T")[0];
   const txContext = formatTransactions(transactions);
   const transportContext = transport
-    ? `TRANSPORT (${transport.month.slice(0, 7)}): GoTo ₪${transport.goto_spend}, Rav-Kav ₪${transport.rav_kav_spend}`
+    ? `TRANSPORT (${String(transport.month).slice(0, 7)}): GoTo ₪${transport.goto_spend}, Rav-Kav ₪${transport.rav_kav_spend}`
     : "";
   const creditCardContext = creditCardRows.length > 0
     ? `CREDIT CARD TRANSACTIONS:\n${formatCreditCardTransactions(creditCardRows)}`
