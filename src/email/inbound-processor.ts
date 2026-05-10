@@ -341,32 +341,28 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
     const allResults: AnalyzerResult[] = [];
     const allTransactions = [];
 
-    const subsResult = await runAnalyzerNoFilter(subscriptionsAnalyzer, [rawEmail], provider, allImages);
-    if (subsResult) {
-      allResults.push(subsResult as AnalyzerResult);
-      allTransactions.push(...fromSubscriptions(subsResult.output as SubscriptionOutput));
-    }
-
-    const renewalsResult = await runAnalyzerNoFilter(renewalsAnalyzer, [rawEmail], provider, allImages);
-    if (renewalsResult) {
-      allResults.push(renewalsResult as AnalyzerResult);
-      allTransactions.push(...fromRenewals(renewalsResult.output as RenewalsOutput));
-    }
-
+    // Run credit card analyzer first — if it finds a statement, skip
+    // subscriptions/renewals (they produce wrong results on consolidated statements)
     const creditCardResult = await runAnalyzerNoFilter(creditCardAnalyzer, [rawEmail], provider, allImages);
-    if (creditCardResult) {
+    const isCreditCardStatement = creditCardResult != null &&
+      ((creditCardResult.output as CreditCardOutput).transactions?.length ?? 0) > 0;
+
+    if (isCreditCardStatement) {
       allResults.push(creditCardResult as AnalyzerResult);
       const ccOut = creditCardResult.output as CreditCardOutput;
-      if (ccOut.transactions.length > 0) {
-        await saveCreditCardTransactions(
-          user.user_id,
-          ccOut.cardLast4,
-          ccOut.statementMonth,
-          ccOut.transactions
-        );
-        console.log(
-          `[email/inbound] Saved ${ccOut.transactions.length} credit card transaction(s) (card …${ccOut.cardLast4}, ${ccOut.statementMonth})`
-        );
+      await saveCreditCardTransactions(user.user_id, ccOut.cardLast4, ccOut.statementMonth, ccOut.transactions);
+      console.log(`[email/inbound] CC statement: ${ccOut.transactions.length} transactions, card …${ccOut.cardLast4}`);
+    } else {
+      // Not a CC statement — run subscriptions + renewals as normal
+      const subsResult = await runAnalyzerNoFilter(subscriptionsAnalyzer, [rawEmail], provider, allImages);
+      if (subsResult) {
+        allResults.push(subsResult as AnalyzerResult);
+        allTransactions.push(...fromSubscriptions(subsResult.output as SubscriptionOutput));
+      }
+      const renewalsResult = await runAnalyzerNoFilter(renewalsAnalyzer, [rawEmail], provider, allImages);
+      if (renewalsResult) {
+        allResults.push(renewalsResult as AnalyzerResult);
+        allTransactions.push(...fromRenewals(renewalsResult.output as RenewalsOutput));
       }
     }
 
