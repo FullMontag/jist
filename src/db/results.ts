@@ -44,6 +44,7 @@ export async function saveTransactions(userId: string, rows: TransactionRow[]) {
     rows.map((r) => sql`
       INSERT INTO transactions (user_id, service, amount, currency, date, type, analyzer_id)
       VALUES (${userId}, ${r.service}, ${r.amount}, ${r.currency}, ${r.date}, ${r.type}, ${r.analyzerId})
+      ON CONFLICT (user_id, service, date, type) DO NOTHING
     `)
   );
 }

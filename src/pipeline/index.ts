@@ -166,7 +166,6 @@ export async function runPipeline(
   const transactions = deduplicateTransactions(allTransactions);
   const transport = extractTransportation(userId, transactions);
 
-  await clearUserTransactions(userId);
   await saveAnalyzerResults(userId, allResults);
   await saveTransactions(userId, transactions);
   for (const t of transport) {
