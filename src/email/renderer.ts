@@ -298,7 +298,7 @@ function buildChargesPanel(
     ? `<table width="100%" cellpadding="0" cellspacing="0" border="0"><tr>
         <td style="font-size:12px;color:${C.muted};font-family:${FONT};">No charges recorded this period.</td>
        </tr></table>`
-    : transactions.slice(0, 10).map((t) => {
+    : transactions.slice(0, 25).map((t) => {
         const label = typeLabel[t.type] ?? t.type;
         return `
         <table width="100%" cellpadding="0" cellspacing="0" border="0" style="margin-bottom:20px;">
