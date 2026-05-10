@@ -60,6 +60,7 @@ For each real transaction extract:
     חינוך → Education
     טלקומוניקציה → Telecom
     If no category is given, use "Other"
+- Always classify as Transport: Pango / פנגו, Gett, GOTO / GoTo, Moovit, and any public or shared transport service
 - amount: the transaction amount (positive number, in native currency)
 - currency: ILS unless another currency is shown
 - date: transaction date in YYYY-MM-DD format

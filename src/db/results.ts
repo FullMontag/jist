@@ -40,8 +40,32 @@ export interface TransactionRow {
 export async function saveTransactions(userId: string, rows: TransactionRow[]) {
   if (rows.length === 0) return;
   const sql = getDb();
+
+  // Skip any transaction that already exists in credit_card_transactions for this user
+  // (same amount + date within ±1 day), to avoid double-counting receipts vs CC statements.
+  const ccRows = await sql<{ amount: number; date: string }[]>`
+    SELECT amount, date FROM credit_card_transactions WHERE user_id = ${userId}
+  `;
+  const ccSet = new Set(
+    ccRows.flatMap(({ amount, date }) => {
+      const d = new Date(date);
+      return [-1, 0, 1].map((offset) => {
+        const shifted = new Date(d);
+        shifted.setDate(shifted.getDate() + offset);
+        return `${Number(amount)}|${shifted.toISOString().slice(0, 10)}`;
+      });
+    })
+  );
+
+  const deduped = rows.filter((r) => !ccSet.has(`${Number(r.amount)}|${r.date}`));
+  const skipped = rows.length - deduped.length;
+  if (skipped > 0) {
+    console.log(`[db/results] Skipped ${skipped} transaction(s) already covered by CC statement`);
+  }
+
+  if (deduped.length === 0) return;
   await Promise.all(
-    rows.map((r) => sql`
+    deduped.map((r) => sql`
       INSERT INTO transactions (user_id, service, amount, currency, date, type, analyzer_id)
       VALUES (${userId}, ${r.service}, ${r.amount}, ${r.currency}, ${r.date}, ${r.type}, ${r.analyzerId})
       ON CONFLICT (user_id, service, date, type) DO NOTHING
