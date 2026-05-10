@@ -192,11 +192,15 @@ export async function processWhatsAppMessage(
       const ccOut = r.output as CreditCardOutput;
       const items = ccOut.transactions ?? [];
       if (items.length > 0) {
-        lines.push(`Credit card …${ccOut.cardLast4} (${ccOut.statementMonth}) — ${items.length} transactions, total ₪${ccOut.totalCharged}:`);
-        for (const t of items) {
-          const sym = t.currency === "ILS" ? "₪" : t.currency === "USD" ? "$" : t.currency;
-          lines.push(`  ${t.date} ${t.merchant} ${sym}${t.amount} [${t.category}]`);
-        }
+        const byCategory = new Map<string, number>();
+        for (const t of items) byCategory.set(t.category, (byCategory.get(t.category) ?? 0) + t.amount);
+        const topCategories = [...byCategory.entries()]
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 4)
+          .map(([cat, total]) => `${cat} ₪${total.toFixed(0)}`)
+          .join(", ");
+        lines.push(`Card …${ccOut.cardLast4} (${ccOut.statementMonth}): ${items.length} transactions, ₪${ccOut.totalCharged} total`);
+        lines.push(`Top: ${topCategories}`);
       }
     }
   }
