@@ -3,11 +3,10 @@ import { createAuthenticatedClient } from "@/gmail/oauth";
 import { renderDigest } from "@/email/renderer";
 import { sendDigest } from "@/email/sender";
 import { getAllUsersWithTokens, getGmailTokens, saveDigestRun, hasDigestRuns } from "@/db";
-import { getDb } from "@/db/client";
 import { runPipeline } from "@/pipeline";
 
-// POST /api/cron/digest — called by Vercel Cron every Sunday
-export async function POST(request: NextRequest) {
+// GET /api/cron/digest — called by Vercel Cron every Sunday (Vercel always sends GET)
+export async function GET(request: NextRequest) {
   const authHeader = request.headers.get("authorization");
   if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
@@ -78,27 +77,7 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({ ok: true, processed, errors });
 }
 
-// GET /api/cron/digest — returns recent digest run history (auth required)
-export async function GET(request: NextRequest) {
-  const authHeader = request.headers.get("authorization");
-  if (authHeader !== `Bearer ${process.env.CRON_SECRET}`) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
-  const sql = getDb();
-  const rows = await sql<{
-    id: string;
-    user_id: string;
-    emails_fetched: number;
-    status: string;
-    error: string | null;
-    created_at: string;
-  }[]>`
-    SELECT id, user_id, emails_fetched, status, error, created_at
-    FROM digest_runs
-    ORDER BY created_at DESC
-    LIMIT 20
-  `;
-
-  return NextResponse.json({ runs: rows });
+// POST /api/cron/digest — manual trigger (same logic, kept for curl convenience)
+export async function POST(request: NextRequest) {
+  return GET(request);
 }
