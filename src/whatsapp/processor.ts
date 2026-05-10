@@ -8,9 +8,11 @@
 
 import { subscriptionsAnalyzer } from "@/analyzers/subscriptions";
 import { renewalsAnalyzer } from "@/analyzers/renewals";
+import { creditCardAnalyzer } from "@/analyzers/credit-card";
 import { runAnalyzerNoFilter } from "@/analyzers/types";
 import { createProvider } from "@/llm";
 import { saveAnalyzerResults, saveTransactions } from "@/db/results";
+import { saveCreditCardTransactions } from "@/db/credit-card";
 import { addKnownServices } from "@/db/known-services";
 import { getPdfPasswords } from "@/db/pdf-passwords";
 import { isEncryptedPdf, extractPdfText } from "@/email/pdf-decrypt";
@@ -18,6 +20,7 @@ import { fromSubscriptions, fromRenewals, deduplicateTransactions } from "@/pipe
 import { answerQuestion } from "./qa";
 import type { SubscriptionOutput } from "@/analyzers/subscriptions";
 import type { RenewalsOutput } from "@/analyzers/renewals";
+import type { CreditCardOutput } from "@/analyzers/credit-card";
 import type { AnalyzerResult } from "@/analyzers/types";
 import type { ImageContentBlock, DocumentContentBlock, MediaContentBlock } from "@/llm/types";
 import type { RawEmail } from "@/gmail/fetcher";
@@ -135,6 +138,23 @@ export async function processWhatsAppMessage(
     allTransactions.push(...fromRenewals(renewalsResult.output as RenewalsOutput));
   }
 
+  const creditCardResult = await runAnalyzerNoFilter(creditCardAnalyzer, [rawEmail], provider, blocks as MediaContentBlock[]);
+  if (creditCardResult) {
+    allResults.push(creditCardResult as AnalyzerResult);
+    const ccOut = creditCardResult.output as CreditCardOutput;
+    if (ccOut.transactions.length > 0) {
+      await saveCreditCardTransactions(
+        userId,
+        ccOut.cardLast4,
+        ccOut.statementMonth,
+        ccOut.transactions
+      );
+      console.log(
+        `[whatsapp] Saved ${ccOut.transactions.length} credit card transaction(s) (card …${ccOut.cardLast4}, ${ccOut.statementMonth})`
+      );
+    }
+  }
+
   if (allResults.length > 0) await saveAnalyzerResults(userId, allResults);
 
   const transactions = deduplicateTransactions(allTransactions);
@@ -166,6 +186,17 @@ export async function processWhatsAppMessage(
         const sym = r.currency === "ILS" ? "₪" : r.currency === "USD" ? "$" : r.currency;
         const amt = r.amount != null ? ` — ${sym}${r.amount}` : "";
         lines.push(`Renews ${r.renewalDate}: ${r.service}${amt}`);
+      }
+    }
+    if (r.analyzerId === "credit-card") {
+      const ccOut = r.output as CreditCardOutput;
+      const items = ccOut.transactions ?? [];
+      if (items.length > 0) {
+        lines.push(`Credit card …${ccOut.cardLast4} (${ccOut.statementMonth}) — ${items.length} transactions, total ₪${ccOut.totalCharged}:`);
+        for (const t of items) {
+          const sym = t.currency === "ILS" ? "₪" : t.currency === "USD" ? "$" : t.currency;
+          lines.push(`  ${t.date} ${t.merchant} ${sym}${t.amount} [${t.category}]`);
+        }
       }
     }
   }

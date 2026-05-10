@@ -14,9 +14,11 @@
 import { Resend } from "resend";
 import { subscriptionsAnalyzer } from "@/analyzers/subscriptions";
 import { renewalsAnalyzer } from "@/analyzers/renewals";
+import { creditCardAnalyzer } from "@/analyzers/credit-card";
 import { runAnalyzerNoFilter } from "@/analyzers/types";
 import { createProvider } from "@/llm";
 import { saveAnalyzerResults, saveTransactions } from "@/db/results";
+import { saveCreditCardTransactions } from "@/db/credit-card";
 import { getAllUsersWithTokens } from "@/db/tokens";
 import { getPdfPasswords } from "@/db/pdf-passwords";
 import { addKnownServices } from "@/db/known-services";
@@ -25,6 +27,7 @@ import { isEncryptedPdf, extractPdfText } from "@/email/pdf-decrypt";
 import type { RawEmail } from "@/gmail/fetcher";
 import type { SubscriptionOutput } from "@/analyzers/subscriptions";
 import type { RenewalsOutput } from "@/analyzers/renewals";
+import type { CreditCardOutput } from "@/analyzers/credit-card";
 import type { AnalyzerResult } from "@/analyzers/types";
 import type { ImageContentBlock, DocumentContentBlock, MediaContentBlock } from "@/llm/types";
 
@@ -178,11 +181,26 @@ function buildReplySummary(
         lines.push("");
       }
     }
+
+    if (result.analyzerId === "credit-card") {
+      const out = result.output as CreditCardOutput;
+      const items = out.transactions ?? [];
+      if (items.length > 0) {
+        lines.push(`Credit card transactions (card …${out.cardLast4}, ${out.statementMonth}):`);
+        for (const t of items) {
+          const curr = t.currency === "ILS" ? "₪" : t.currency === "USD" ? "$" : t.currency;
+          lines.push(`  • ${t.merchant} — ${curr}${t.amount} (${t.date}) [${t.category}]`);
+        }
+        lines.push(`  Total: ₪${out.totalCharged}`);
+        lines.push("");
+      }
+    }
   }
 
   const hasContent = results.some((r) => {
     if (r.analyzerId === "subscriptions") return ((r.output as SubscriptionOutput).subscriptions ?? []).length > 0;
     if (r.analyzerId === "renewals") return ((r.output as RenewalsOutput).renewals ?? []).length > 0;
+    if (r.analyzerId === "credit-card") return ((r.output as CreditCardOutput).transactions ?? []).length > 0;
     return false;
   });
 
@@ -333,6 +351,23 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
     if (renewalsResult) {
       allResults.push(renewalsResult as AnalyzerResult);
       allTransactions.push(...fromRenewals(renewalsResult.output as RenewalsOutput));
+    }
+
+    const creditCardResult = await runAnalyzerNoFilter(creditCardAnalyzer, [rawEmail], provider, allImages);
+    if (creditCardResult) {
+      allResults.push(creditCardResult as AnalyzerResult);
+      const ccOut = creditCardResult.output as CreditCardOutput;
+      if (ccOut.transactions.length > 0) {
+        await saveCreditCardTransactions(
+          user.user_id,
+          ccOut.cardLast4,
+          ccOut.statementMonth,
+          ccOut.transactions
+        );
+        console.log(
+          `[email/inbound] Saved ${ccOut.transactions.length} credit card transaction(s) (card …${ccOut.cardLast4}, ${ccOut.statementMonth})`
+        );
+      }
     }
 
     // 7. Persist

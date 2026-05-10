@@ -5,6 +5,47 @@
 
 import { createProvider } from "@/llm";
 import { getLatestTransactions, getLatestTransportMonth } from "@/db/results";
+import { getCreditCardTransactions, getCreditCardSummary } from "@/db/credit-card";
+import type { CreditCardTransactionRow } from "@/db/credit-card";
+
+function formatCreditCardTransactions(rows: CreditCardTransactionRow[]): string {
+  if (rows.length === 0) return "";
+
+  // Group by card + month
+  const groups = new Map<string, CreditCardTransactionRow[]>();
+  for (const row of rows) {
+    const key = `${row.card_last4}|${row.statement_month}`;
+    const existing = groups.get(key) ?? [];
+    existing.push(row);
+    groups.set(key, existing);
+  }
+
+  const parts: string[] = [];
+  for (const [key, txns] of groups) {
+    const [card, month] = key.split("|") as [string, string];
+
+    // Category totals for this group
+    const categoryTotals = new Map<string, number>();
+    for (const t of txns) {
+      categoryTotals.set(t.category, (categoryTotals.get(t.category) ?? 0) + Number(t.amount));
+    }
+    const sortedCategories = [...categoryTotals.entries()].sort((a, b) => b[1] - a[1]);
+
+    const lines: string[] = [
+      `Card …${card} | ${month}`,
+      `  Category breakdown:`,
+      ...sortedCategories.map(([cat, total]) => `    ${cat}: ₪${total.toFixed(2)}`),
+      `  Transactions:`,
+      ...txns.map((t) => {
+        const sym = t.currency === "ILS" ? "₪" : t.currency === "USD" ? "$" : t.currency;
+        return `    ${t.date} ${t.merchant} ${sym}${t.amount} [${t.category}]`;
+      }),
+    ];
+    parts.push(lines.join("\n"));
+  }
+
+  return parts.join("\n\n");
+}
 
 function formatTransactions(rows: Awaited<ReturnType<typeof getLatestTransactions>>): string {
   if (rows.length === 0) return "No transactions on record yet.";
@@ -26,15 +67,19 @@ function formatTransactions(rows: Awaited<ReturnType<typeof getLatestTransaction
 }
 
 export async function answerQuestion(userId: string, question: string): Promise<string> {
-  const [transactions, transport] = await Promise.all([
+  const [transactions, transport, creditCardRows] = await Promise.all([
     getLatestTransactions(userId),
     getLatestTransportMonth(userId),
+    getCreditCardTransactions(userId, 6),
   ]);
 
   const today = new Date().toISOString().split("T")[0];
   const txContext = formatTransactions(transactions);
   const transportContext = transport
     ? `TRANSPORT (${transport.month.slice(0, 7)}): GoTo ₪${transport.goto_spend}, Rav-Kav ₪${transport.rav_kav_spend}`
+    : "";
+  const creditCardContext = creditCardRows.length > 0
+    ? `CREDIT CARD TRANSACTIONS:\n${formatCreditCardTransactions(creditCardRows)}`
     : "";
 
   const systemPrompt = [
@@ -47,6 +92,7 @@ export async function answerQuestion(userId: string, question: string): Promise<
     `FINANCIAL DATA:`,
     txContext,
     transportContext,
+    creditCardContext,
   ].filter(Boolean).join("\n");
 
   const provider = createProvider("anthropic");
