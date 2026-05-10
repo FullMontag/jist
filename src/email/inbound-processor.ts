@@ -291,19 +291,6 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
     return;
   }
 
-  // Idempotency: skip if this email was already processed (Resend can send duplicate webhooks)
-  const sql = getDb();
-  const inserted = await sql`
-    INSERT INTO processed_inbound_emails (email_id, user_id)
-    VALUES (${data.email_id}, ${user.user_id})
-    ON CONFLICT (email_id) DO NOTHING
-    RETURNING email_id
-  `;
-  if (inserted.length === 0) {
-    console.log(`[email/inbound] Already processed ${data.email_id} — skipping duplicate webhook`);
-    return;
-  }
-
   // 4. Resolve PDFs: encrypted ones are decrypted + text-extracted using stored passwords;
   //    unencrypted ones are passed as native Claude document blocks.
   let extraBodyText = "";
@@ -407,7 +394,16 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
       console.log(`[email/inbound] Learned ${learnedServices.length} service keyword(s) for future sweeps`);
     }
 
-    // 9. Reply with a summary
+    // 9. Mark as successfully processed (idempotency — written at success so failed/timeout runs
+    //    leave the email unblocked and retriable via the route handler's check)
+    const sql = getDb();
+    await sql`
+      INSERT INTO processed_inbound_emails (email_id, user_id)
+      VALUES (${data.email_id}, ${user.user_id})
+      ON CONFLICT (email_id) DO NOTHING
+    `;
+
+    // 10. Reply with a summary
     await sendReply(resend, fromAddress, data.subject, buildReplySummary(allResults, data.subject));
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);

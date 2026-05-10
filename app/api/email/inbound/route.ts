@@ -11,9 +11,10 @@
  *   3. Copy the webhook signing secret from Resend → add as RESEND_WEBHOOK_SECRET in Vercel
  */
 
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { Webhook } from "svix";
 import { processInboundEmail, type InboundEmailData } from "@/email/inbound-processor";
+import { getDb } from "@/db/client";
 
 interface ResendInboundPayload {
   type: string;
@@ -86,15 +87,27 @@ export async function POST(request: NextRequest) {
     `[email/inbound] Received email from ${emailData.from}: "${emailData.subject}"`
   );
 
-  // Await processing before responding — Vercel kills the function the moment
-  // a response is sent, so fire-and-forget would silently drop all the work.
-  // Resend's webhook timeout is 30s, which is plenty for one email.
-  try {
-    await processInboundEmail(emailData);
-  } catch (err) {
-    console.error("[email/inbound] Processing error:", err);
-    // Still return 200 so Resend doesn't retry — the error is logged above.
+  // Idempotency: check if already processed before queuing background work.
+  // We write the record at the END of successful processing (in processInboundEmail),
+  // so a timeout/crash leaves the email unblocked for the next webhook retry.
+  const sql = getDb();
+  const existing = await sql<{ email_id: string }[]>`
+    SELECT email_id FROM processed_inbound_emails WHERE email_id = ${emailData.email_id}
+  `;
+  if (existing.length > 0) {
+    console.log(`[email/inbound] Already processed ${emailData.email_id} — skipping duplicate webhook`);
+    return NextResponse.json({ ok: true, skipped: true });
   }
+
+  // Use after() so Resend gets a 200 immediately. Processing (PDF download + Claude call)
+  // can take 30-90s for large scanned PDFs — well beyond Resend's 30s webhook timeout.
+  after(async () => {
+    try {
+      await processInboundEmail(emailData);
+    } catch (err) {
+      console.error("[email/inbound] Background processing error:", err);
+    }
+  });
 
   return NextResponse.json({ ok: true });
 }
