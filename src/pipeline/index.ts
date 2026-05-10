@@ -58,7 +58,9 @@ export function fromOpportunities(output: OpportunitiesOutput): TransactionRow[]
 }
 
 // ── Deduplication ─────────────────────────────────────────────────────────────
-// Same service + same date from two analyzers → keep ILS, drop the USD duplicate.
+// Same service + same amount + same date from two analyzers → one winner:
+//   1. charge beats renewal (invoice + receipt for same bill → keep receipt)
+//   2. ILS beats USD (same charge in two currencies → keep local)
 
 function normalizeService(s: string): string {
   return s.toLowerCase().replace(/\s*\(.*?\)/g, "").trim().slice(0, 24);
@@ -67,11 +69,13 @@ function normalizeService(s: string): string {
 export function deduplicateTransactions(rows: TransactionRow[]): TransactionRow[] {
   const map = new Map<string, TransactionRow>();
   for (const row of rows) {
-    const key = `${normalizeService(row.service)}|${row.date}`;
+    const key = `${normalizeService(row.service)}|${String(row.amount)}|${row.date}`;
     const existing = map.get(key);
     if (!existing) {
       map.set(key, row);
-    } else if (row.currency === "ILS" && existing.currency !== "ILS") {
+    } else if (row.type === "charge" && existing.type === "renewal") {
+      map.set(key, row);
+    } else if (row.currency === "ILS" && existing.currency !== "ILS" && existing.type !== "charge") {
       map.set(key, row);
     }
   }
