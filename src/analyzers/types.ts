@@ -9,6 +9,8 @@ export interface Analyzer<TOutput> {
   description: string;
   /** Which LLM provider to use for this analyzer */
   provider: ProviderName;
+  /** Override default max_tokens for the structured output call */
+  maxTokens?: number;
   /** Filter emails down to only the ones relevant to this analyzer */
   filter(emails: RawEmail[]): RawEmail[];
   /** System prompt sent to the LLM */
@@ -80,6 +82,7 @@ async function runAnalyzerOn<T>(
       systemPrompt: analyzer.systemPrompt,
       messages: [{ role: "user", content }],
       temperature: 0.1,
+      maxTokens: analyzer.maxTokens,
     },
     analyzer.outputSchema
   );

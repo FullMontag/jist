@@ -26,6 +26,7 @@ export const creditCardAnalyzer: Analyzer<CreditCardOutput> = {
   name: "Credit Card Statement",
   description: "Extracts transactions from Cal (כאל) credit card statements",
   provider: "anthropic",
+  maxTokens: 16000,
 
   filter(emails: RawEmail[]): RawEmail[] {
     return emails.filter((e) => {
@@ -41,9 +42,9 @@ export const creditCardAnalyzer: Analyzer<CreditCardOutput> = {
 Extract ALL real transactions from the provided Cal (כאל) credit card statement PDF or text.
 
 CRITICAL — SKIP these rows entirely (do NOT include them as transactions):
-- Any row where the merchant name contains "חיוב תקציב" (corporate budget reimbursement offset rows)
-- Any row that is a negative/credit offset for a previous charge
-- Any summary or total rows
+- Rows where the merchant name IS exactly or starts with "חיוב תקציב" — these are corporate budget reimbursement offset rows that cancel out real charges. Do NOT skip rows just because a column or footnote mentions "חיוב תקציב"; only skip when the merchant/business column itself is "חיוב תקציב ...".
+- Any summary or total rows (e.g. "סה״כ לחיוב", totals, subtotals)
+- Do NOT skip regular merchant transactions even if they appear alongside "חיוב תקציב" offset rows
 
 For each real transaction extract:
 - merchant: the merchant/business name (transliterate or translate to English if in Hebrew)

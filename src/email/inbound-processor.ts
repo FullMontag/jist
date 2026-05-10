@@ -345,8 +345,10 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
     // Run credit card analyzer first — if it finds a statement, skip
     // subscriptions/renewals (they produce wrong results on consolidated statements)
     const creditCardResult = await runAnalyzerNoFilter(creditCardAnalyzer, [rawEmail], provider, allImages);
+    // Route as CC statement if the analyzer identified a card, even if it extracted 0 transactions
+    // (prevents subscriptions/renewals from misclassifying CC statement content)
     const isCreditCardStatement = creditCardResult != null &&
-      ((creditCardResult.output as CreditCardOutput).transactions?.length ?? 0) > 0;
+      !!((creditCardResult.output as CreditCardOutput).cardLast4);
 
     if (isCreditCardStatement) {
       allResults.push(creditCardResult as AnalyzerResult);
