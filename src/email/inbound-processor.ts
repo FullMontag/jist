@@ -12,6 +12,7 @@
  */
 
 import { Resend } from "resend";
+import { getDb } from "@/db/client";
 import { subscriptionsAnalyzer } from "@/analyzers/subscriptions";
 import { renewalsAnalyzer } from "@/analyzers/renewals";
 import { creditCardAnalyzer } from "@/analyzers/credit-card";
@@ -287,6 +288,19 @@ export async function processInboundEmail(data: InboundEmailData): Promise<void>
 
   if (!user) {
     console.warn(`[email/inbound] Sender ${fromAddress} is not a registered user — ignoring`);
+    return;
+  }
+
+  // Idempotency: skip if this email was already processed (Resend can send duplicate webhooks)
+  const sql = getDb();
+  const inserted = await sql`
+    INSERT INTO processed_inbound_emails (email_id, user_id)
+    VALUES (${data.email_id}, ${user.user_id})
+    ON CONFLICT (email_id) DO NOTHING
+    RETURNING email_id
+  `;
+  if (inserted.length === 0) {
+    console.log(`[email/inbound] Already processed ${data.email_id} — skipping duplicate webhook`);
     return;
   }
 
