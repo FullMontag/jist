@@ -139,14 +139,15 @@ export async function hasDigestRuns(userId: string): Promise<boolean> {
 
 export async function getUserDisplayName(userId: string): Promise<string | null> {
   const sql = getDb();
-  const rows = await sql<{ value: string }[]>`
-    SELECT value::text AS value FROM user_config
+  // Select as jsonb (not ::text) so postgres.js auto-parses it to a JS string
+  const rows = await sql<{ value: unknown }[]>`
+    SELECT value FROM user_config
     WHERE user_id = ${userId} AND key = 'display_name'
     LIMIT 1
   `;
   const raw = rows[0]?.value;
-  if (!raw) return null;
-  return raw.replace(/^"|"$/g, ""); // strip JSON string quotes if present
+  if (raw == null) return null;
+  return typeof raw === "string" ? raw : String(raw);
 }
 
 export async function getAnalyzerHistory(userId: string, analyzerId: string, limit = 12): Promise<Pick<AnalyzerResultRow, "raw_output" | "created_at">[]> {

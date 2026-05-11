@@ -530,10 +530,11 @@ export async function renderDigest(userId: string): Promise<string> {
   const ren = (renHistory[0]?.raw_output as RenewalsOutput) ?? null;
   const opp = (oppHistory[0]?.raw_output as OpportunitiesOutput) ?? null;
 
-  const nonTransport = transactions.filter((t) => !isTransportService(t.service));
+  // Renewals belong in the Alerts panel only; charges panel shows actual spend
+  const chargesOnly = transactions.filter((t) => !isTransportService(t.service) && t.type !== "renewal");
 
-  const largest = nonTransport.length > 0
-    ? nonTransport.reduce((a, b) => (parseFloat(String(a.amount)) >= parseFloat(String(b.amount)) ? a : b))
+  const largest = chargesOnly.length > 0
+    ? chargesOnly.reduce((a, b) => (parseFloat(String(a.amount)) >= parseFloat(String(b.amount)) ? a : b))
     : null;
 
   const firstName  = displayName ?? firstNameFromEmail(userId);
@@ -542,11 +543,11 @@ export async function renderDigest(userId: string): Promise<string> {
   const rows = [
     buildHeader(editionDate),
     buildGreeting(firstName),
-    buildStatHero(nonTransport.length, largest),
+    buildStatHero(chargesOnly.length, largest),
     buildTwoColumnPanels(buildAlertRows(ren), buildOppRows(opp)),
     buildTransportPanel(transport),
     buildCategoryPanels(categoryTrends),
-    buildChargesPanel(nonTransport),
+    buildChargesPanel(chargesOnly),
     buildCta(),
     buildFooter(),
   ].join("\n");
