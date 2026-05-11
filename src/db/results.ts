@@ -57,10 +57,18 @@ export async function saveTransactions(userId: string, rows: TransactionRow[]) {
     })
   );
 
-  const deduped = rows.filter((r) => !ccSet.has(`${Number(r.amount)}|${r.date}`));
+  // Also skip anything already stored in transactions (same amount + date + type)
+  const existingRows = await sql<{ amount: number; date: string; type: string }[]>`
+    SELECT amount::float AS amount, date::text AS date, type FROM transactions WHERE user_id = ${userId}
+  `;
+  const existingSet = new Set(existingRows.map((r) => `${Number(r.amount)}|${r.date}|${r.type}`));
+
+  const deduped = rows
+    .filter((r) => !ccSet.has(`${Number(r.amount)}|${r.date}`))
+    .filter((r) => !existingSet.has(`${Number(r.amount)}|${r.date}|${r.type}`));
   const skipped = rows.length - deduped.length;
   if (skipped > 0) {
-    console.log(`[db/results] Skipped ${skipped} transaction(s) already covered by CC statement`);
+    console.log(`[db/results] Skipped ${skipped} transaction(s) (CC dedup or already stored)`);
   }
 
   if (deduped.length === 0) return;
@@ -127,6 +135,18 @@ export async function hasDigestRuns(userId: string): Promise<boolean> {
     SELECT count(*)::int AS n FROM digest_runs WHERE user_id = ${userId} LIMIT 1
   `;
   return (rows[0]?.n ?? 0) > 0;
+}
+
+export async function getUserDisplayName(userId: string): Promise<string | null> {
+  const sql = getDb();
+  const rows = await sql<{ value: string }[]>`
+    SELECT value::text AS value FROM user_config
+    WHERE user_id = ${userId} AND key = 'display_name'
+    LIMIT 1
+  `;
+  const raw = rows[0]?.value;
+  if (!raw) return null;
+  return raw.replace(/^"|"$/g, ""); // strip JSON string quotes if present
 }
 
 export async function getAnalyzerHistory(userId: string, analyzerId: string, limit = 12): Promise<Pick<AnalyzerResultRow, "raw_output" | "created_at">[]> {

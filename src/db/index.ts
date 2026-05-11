@@ -13,5 +13,6 @@ export {
   getLatestTransactions,
   getLatestTransportMonth,
   hasDigestRuns,
+  getUserDisplayName,
 } from "./results";
 export type { TransactionRow } from "./results";

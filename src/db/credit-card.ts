@@ -56,6 +56,34 @@ export async function getCreditCardTransactions(
   `;
 }
 
+export async function getCategoryTrends(userId: string): Promise<{
+  current: { category: string; total: number; count: number }[];
+  previous: { category: string; total: number; count: number }[];
+  currentMonth: string;
+  previousMonth: string;
+}> {
+  const sql = getDb();
+  const months = await sql<{ statement_month: string }[]>`
+    SELECT DISTINCT statement_month
+    FROM credit_card_transactions
+    WHERE user_id = ${userId}
+    ORDER BY statement_month DESC
+    LIMIT 2
+  `;
+  const [cur, prev] = months;
+  if (!cur) return { current: [], previous: [], currentMonth: "", previousMonth: "" };
+  const [current, previous] = await Promise.all([
+    getCreditCardSummary(userId, cur.statement_month),
+    prev ? getCreditCardSummary(userId, prev.statement_month) : Promise.resolve([]),
+  ]);
+  return {
+    current,
+    previous,
+    currentMonth: cur.statement_month,
+    previousMonth: prev?.statement_month ?? "",
+  };
+}
+
 export async function getCreditCardSummary(
   userId: string,
   month: string

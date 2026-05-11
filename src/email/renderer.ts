@@ -1,4 +1,5 @@
-import { getAnalyzerHistory, getLatestTransactions, getLatestTransportMonth } from "@/db/results";
+import { getAnalyzerHistory, getLatestTransactions, getLatestTransportMonth, getUserDisplayName } from "@/db/results";
+import { getCategoryTrends } from "@/db/credit-card";
 import type { RenewalsOutput } from "@/analyzers/renewals";
 import type { OpportunitiesOutput } from "@/analyzers/opportunities";
 
@@ -294,6 +295,123 @@ function buildTransportPanel(
   </tr>`;
 }
 
+// ── Category display config ───────────────────────────────────────────────────
+
+const CATEGORY_GROUPS: { label: string; icon: string; match: string[] }[] = [
+  { label: "Restaurants & Food",  icon: "&#127860;", match: ["restaurant", "food", "dining", "cafe", "coffee", "supermarket", "grocery"] },
+  { label: "Shopping",            icon: "&#128717;", match: ["shopping", "fashion", "clothing", "retail"] },
+  { label: "Health",              icon: "&#9877;",   match: ["health", "pharmacy", "medical", "clinic", "insurance", "optical"] },
+  { label: "Entertainment",       icon: "&#127916;", match: ["entertainment", "cinema", "gaming", "sport", "leisure"] },
+  { label: "Fuel",                icon: "&#9981;",   match: ["fuel", "gas", "petrol"] },
+  { label: "Telecom",             icon: "&#128241;", match: ["telecom", "mobile", "internet", "phone", "cellular"] },
+  { label: "Education",           icon: "&#128218;", match: ["education", "school", "course", "learning"] },
+];
+
+function assignCategoryGroup(category: string): string {
+  const c = category.toLowerCase();
+  for (const g of CATEGORY_GROUPS) {
+    if (g.match.some((m) => c.includes(m))) return g.label;
+  }
+  return "Other";
+}
+
+function buildCategoryPanels(trends: {
+  current: { category: string; total: number; count: number }[];
+  previous: { category: string; total: number; count: number }[];
+  currentMonth: string;
+}): string {
+  if (trends.current.length === 0) return "";
+
+  // Group by display bucket
+  const buckets = new Map<string, { cur: number; prev: number }>();
+  const prevByCategory = new Map(trends.previous.map((r) => [r.category, r.total]));
+
+  for (const row of trends.current) {
+    const group = assignCategoryGroup(row.category);
+    const existing = buckets.get(group) ?? { cur: 0, prev: 0 };
+    existing.cur += Number(row.total);
+    existing.prev += Number(prevByCategory.get(row.category) ?? 0);
+    buckets.set(group, existing);
+  }
+
+  // Sort by current spend desc, skip tiny buckets
+  const sorted = Array.from(buckets.entries())
+    .filter(([, v]) => v.cur > 5)
+    .sort(([, a], [, b]) => b.cur - a.cur);
+
+  if (sorted.length === 0) return "";
+
+  const monthLabel = trends.currentMonth
+    ? new Date(trends.currentMonth + "-01").toLocaleDateString("en-US", { month: "long", year: "numeric" })
+    : "This month";
+
+  const numStyle   = `font-family:${MONO};font-size:22px;font-weight:400;color:${C.black};letter-spacing:-0.04em;`;
+  const labelStyle = `font-size:10px;text-transform:uppercase;letter-spacing:0.12em;color:${C.muted};margin-top:3px;font-family:${FONT};`;
+  const trendUp    = `font-size:10px;font-weight:700;color:${C.red};font-family:${FONT};`;
+  const trendDown  = `font-size:10px;font-weight:700;color:${C.teal};font-family:${FONT};`;
+  const trendFlat  = `font-size:10px;color:${C.muted};font-family:${FONT};`;
+
+  function trendHtml(cur: number, prev: number): string {
+    if (prev === 0) return `<span style="${trendFlat}">new</span>`;
+    const pct = Math.round(((cur - prev) / prev) * 100);
+    if (Math.abs(pct) < 5) return `<span style="${trendFlat}">&rarr; ${pct > 0 ? "+" : ""}${pct}%</span>`;
+    if (pct > 0)  return `<span style="${trendUp}">&uarr; +${pct}%</span>`;
+    return `<span style="${trendDown}">&darr; ${pct}%</span>`;
+  }
+
+  // Render in rows of 3 columns
+  const cells = sorted.map(([group, v]) => {
+    const cfg = CATEGORY_GROUPS.find((g) => g.label === group);
+    const icon = cfg?.icon ?? "&#9632;";
+    return `
+    <td width="33%" valign="top" style="padding:0 8px 24px 0;">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${C.surface};border:1px solid rgba(226,232,240,0.5);padding:16px;">
+        <tr><td>
+          <div style="font-size:16px;margin-bottom:6px;">${icon}</div>
+          <div style="${numStyle}">${fmt(v.cur, "ILS")}</div>
+          <div style="${labelStyle}">${esc(group)}</div>
+          <div style="margin-top:4px;">${trendHtml(v.cur, v.prev)}</div>
+        </td></tr>
+      </table>
+    </td>`;
+  });
+
+  // Split into rows of 3
+  const tableRows: string[] = [];
+  for (let i = 0; i < cells.length; i += 3) {
+    const trio = cells.slice(i, i + 3);
+    while (trio.length < 3) trio.push(`<td width="33%"></td>`);
+    tableRows.push(`<tr>${trio.join("")}</tr>`);
+  }
+
+  return `
+  <tr>
+    <td style="padding:0 40px 24px;background:${C.white};">
+      <table width="100%" cellpadding="0" cellspacing="0" border="0" style="background:${C.white};border:1px solid rgba(226,232,240,0.5);">
+        <tr>
+          <td style="padding:32px 32px 8px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              <tr><td style="border-bottom:1px solid ${C.outline};padding-bottom:16px;margin-bottom:24px;">
+                <table cellpadding="0" cellspacing="0" border="0"><tr>
+                  <td style="font-size:14px;padding-right:8px;">&#9650;</td>
+                  <td style="font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:0.2em;color:${C.text};font-family:${FONT};">Spending by Category &middot; ${esc(monthLabel)}</td>
+                </tr></table>
+              </td></tr>
+            </table>
+          </td>
+        </tr>
+        <tr>
+          <td style="padding:16px 24px 8px;">
+            <table width="100%" cellpadding="0" cellspacing="0" border="0">
+              ${tableRows.join("\n              ")}
+            </table>
+          </td>
+        </tr>
+      </table>
+    </td>
+  </tr>`;
+}
+
 function buildChargesPanel(
   transactions: { service: string; amount: number | string; currency: string; date: string; type: string }[]
 ): string {
@@ -400,11 +518,13 @@ function buildFooter(): string {
 // ── Main export ───────────────────────────────────────────────────────────────
 
 export async function renderDigest(userId: string): Promise<string> {
-  const [transactions, transport, renHistory, oppHistory] = await Promise.all([
+  const [transactions, transport, renHistory, oppHistory, displayName, categoryTrends] = await Promise.all([
     getLatestTransactions(userId),
     getLatestTransportMonth(userId),
     getAnalyzerHistory(userId, "renewals", 1),
     getAnalyzerHistory(userId, "opportunities", 1),
+    getUserDisplayName(userId),
+    getCategoryTrends(userId),
   ]);
 
   const ren = (renHistory[0]?.raw_output as RenewalsOutput) ?? null;
@@ -416,7 +536,7 @@ export async function renderDigest(userId: string): Promise<string> {
     ? nonTransport.reduce((a, b) => (parseFloat(String(a.amount)) >= parseFloat(String(b.amount)) ? a : b))
     : null;
 
-  const firstName  = firstNameFromEmail(userId);
+  const firstName  = displayName ?? firstNameFromEmail(userId);
   const editionDate = `${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })} &middot; ${esc(userId)}`;
 
   const rows = [
@@ -425,6 +545,7 @@ export async function renderDigest(userId: string): Promise<string> {
     buildStatHero(nonTransport.length, largest),
     buildTwoColumnPanels(buildAlertRows(ren), buildOppRows(opp)),
     buildTransportPanel(transport),
+    buildCategoryPanels(categoryTrends),
     buildChargesPanel(nonTransport),
     buildCta(),
     buildFooter(),
