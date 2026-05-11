@@ -84,7 +84,7 @@ export function deduplicateTransactions(rows: TransactionRow[]): TransactionRow[
 
 // ── Transportation extraction ─────────────────────────────────────────────────
 
-const GOTO_PATTERNS = ["goto", "go-to", "gotoglobal", "גו-טו"];
+const GOTO_PATTERNS = ["goto", "go-to", "gotoglobal", "גו-טו", "gett"];
 const RAVKAV_PATTERNS = ["moovit", "pango", "rav kav", "רב-קו", "רב קו"];
 
 export function extractTransportation(

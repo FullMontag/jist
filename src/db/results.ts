@@ -96,12 +96,17 @@ export async function saveTransportationMonthly(
   `;
 }
 
-export async function getLatestTransactions(userId: string): Promise<TransactionDbRow[]> {
+export async function getLatestTransactions(userId: string, daysBack = 60): Promise<TransactionDbRow[]> {
   const sql = getDb();
+  // Deduplicate by (amount, date, type) keeping the most recently created row,
+  // and limit to recent period so old charges don't re-appear every week.
   return sql<TransactionDbRow[]>`
-    SELECT * FROM transactions
+    SELECT DISTINCT ON (amount::numeric, date, type)
+      *
+    FROM transactions
     WHERE user_id = ${userId}
-    ORDER BY date DESC
+      AND date >= (CURRENT_DATE - ${daysBack} * INTERVAL '1 day')::date
+    ORDER BY amount::numeric, date, type, created_at DESC
   `;
 }
 

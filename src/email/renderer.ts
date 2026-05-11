@@ -50,6 +50,15 @@ function firstNameFromEmail(email: string): string {
   return clean.charAt(0).toUpperCase() + clean.slice(1);
 }
 
+// ── Transport filter ──────────────────────────────────────────────────────────
+// Services that belong in the transport panel, not the charges panel
+const TRANSPORT_KEYWORDS = ["goto", "go-to", "gotoglobal", "גו-טו", "gett", "moovit", "pango", "פנגו", "rav kav", "רב-קו", "רב קו"];
+
+function isTransportService(service: string): boolean {
+  const s = service.toLowerCase();
+  return TRANSPORT_KEYWORDS.some((k) => s.includes(k));
+}
+
 // ── Section builders ──────────────────────────────────────────────────────────
 
 function buildHeader(editionDate: string): string {
@@ -264,7 +273,7 @@ function buildTransportPanel(
                   <tr>
                     <td width="33%" valign="top">
                       <div style="${numStyle}">${fmt(goto, "ILS")}</div>
-                      <div style="${subStyle}">GoTo car-share</div>
+                      <div style="${subStyle}">GoTo / Gett</div>
                     </td>
                     <td width="33%" valign="top">
                       <div style="${numStyle}">${fmt(ravKav, "ILS")}</div>
@@ -401,8 +410,10 @@ export async function renderDigest(userId: string): Promise<string> {
   const ren = (renHistory[0]?.raw_output as RenewalsOutput) ?? null;
   const opp = (oppHistory[0]?.raw_output as OpportunitiesOutput) ?? null;
 
-  const largest = transactions.length > 0
-    ? transactions.reduce((a, b) => (parseFloat(String(a.amount)) >= parseFloat(String(b.amount)) ? a : b))
+  const nonTransport = transactions.filter((t) => !isTransportService(t.service));
+
+  const largest = nonTransport.length > 0
+    ? nonTransport.reduce((a, b) => (parseFloat(String(a.amount)) >= parseFloat(String(b.amount)) ? a : b))
     : null;
 
   const firstName  = firstNameFromEmail(userId);
@@ -411,10 +422,10 @@ export async function renderDigest(userId: string): Promise<string> {
   const rows = [
     buildHeader(editionDate),
     buildGreeting(firstName),
-    buildStatHero(transactions.length, largest),
+    buildStatHero(nonTransport.length, largest),
     buildTwoColumnPanels(buildAlertRows(ren), buildOppRows(opp)),
     buildTransportPanel(transport),
-    buildChargesPanel(transactions),
+    buildChargesPanel(nonTransport),
     buildCta(),
     buildFooter(),
   ].join("\n");
